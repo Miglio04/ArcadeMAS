@@ -1,0 +1,93 @@
+# Unity
+env/Library/
+env/Logs/
+env/Temp/
+env/obj/
+env/bin/
+env/*.csproj
+env/*.sln
+env/UserSettings/
+env/ProjectSettings/Packages-manifest.backup
+env/[Ll]ibrary/
+env/[Tt]emp/
+env/[Oo]bj/
+env/[Bb]uild/
+env/[Bb]uilds/
+env/[Ll]ogs/
+env/[Uu]ser[Ss]ettings/
+env/*.log
+env/*.apk
+env/*.aab
+env/*.unitypackage
+env/UIElementsSchema/
+env/Packages/
+!env/Packages/manifest.json
+!env/Packages/packages-lock.json
+
+# Gradle
+mind/.gradle/
+mind/build/
+mind/bin/
+mind/*.jar
+mind/*.war
+mind/dist/
+mind/local.properties
+mind/gradle-app.setting
+
+# Java/Build
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.vsconfig
+
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+.AppleDouble/
+.LSOverride
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node (if used)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python (if used)
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Misc
+*.bak
+*.tmp
+*.swp
+log/
+logs/
+bin/
