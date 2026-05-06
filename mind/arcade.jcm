@@ -1,4 +1,14 @@
 mas arcade {
+	agent npc:player.asl {
+		ag-class: vesna.VesnaAgent
+		beliefs: address( localhost )
+			port( 3450 )
+			budget(0), friends([])
+		goals:	play
+		join: ws
+
+	}
+
 	workspace ws {
 		artifact breakout2: artifact.SinglePlayerGameArtifact("Breakout2", 5204)
 		artifact pacman: artifact.SinglePlayerGameArtifact("Pacman", 5201)

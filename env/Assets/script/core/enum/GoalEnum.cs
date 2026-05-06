@@ -4,4 +4,5 @@ public enum GoalEnum
     Buy_Coffee,
     Call_Parents,
     Grab_Artifact,
+    Play
 }
