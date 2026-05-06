@@ -17,7 +17,7 @@ public class ShopperAvatarScript : AgentAvatarSocial
     protected override void Awake()
     {
         base.Awake();   
-        agentFile = string.IsNullOrEmpty(agentFile) ? "shopper.asl" : agentFile;
+        agentFile = string.IsNullOrEmpty(agentFile) ? "player.asl" : agentFile;
         JaCaMoAgentClassPath = "artifact.lib.maselements.AgentMasElement";
         autonomousWalking = (AutonomousWalking) movementModel;
         if (waypoints is { Length: > 0 })
