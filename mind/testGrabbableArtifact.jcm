@@ -1,8 +1,0 @@
-mas testGrabbableArtifact {
-	workspace ws {
-		artifact snapPoint: artifact.SnapPointArtifact("SnapPoint", 684)
-		artifact envManager: artifact.EnvManagerArtifact("envManager", 5126)
-		artifact cylinder: artifact.CylinderArtifact("Cylinder", 3303)
-		artifact cube: artifact.SinglePlayerGameArtifact("Cube", 1111)
-	}
-}
