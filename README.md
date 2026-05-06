@@ -22,5 +22,3 @@ To run the project, follow these steps:
 - JaCaMo: A framework for developing multi-agent systems, used to implement the agents in the arcade.
 - Vesna-Unity: A library that enables communication between JaCaMo agents and Unity.
 - ChatBDI: A communication protocol used for interaction between agents and the user.
-
-## Testing
