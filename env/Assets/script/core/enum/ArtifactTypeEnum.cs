@@ -11,5 +11,6 @@ public enum ArtifactTypeEnum
     SnapPoint,
     Cylinder,
     Lever,
-    SinglePlayerGame
+    SinglePlayerGame,
+    TokenMachine
 }

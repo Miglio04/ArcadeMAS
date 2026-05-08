@@ -24,7 +24,7 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
         super.init(artifactName, webSocketPort);
         defineObsProperty("tokens", 100);
         defineObsProperty("token_price", 2);
-        defineObsProperty("type", "token_machine");
+        defineObsProperty("type", "tokenMachine");
     }
 
     private int tokens = 0;
@@ -32,7 +32,7 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
     @INTERNAL_OPERATION
     public void clearTokenMachine() {
         tokens = 0; // Reset tokens after transaction
-        lock.unlock();
+        //lock.unlock();
     }
 
     @INTERNAL_OPERATION
@@ -58,8 +58,9 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
     @Override
     public void onMessageReceived(String message) {
         try{
-            lock.lock();
+            //lock.lock();
             JSONObject msg = new JSONObject(message);
+            writeLog(message);
             if (msg.has("type")) {
                 String type = msg.getString("type");
                 switch (type) {

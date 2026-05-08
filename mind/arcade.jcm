@@ -1,5 +1,15 @@
 mas arcade {
-	agent npc:player.asl {
+	agent player2:player.asl {
+		ag-class: vesna.VesnaAgent
+		beliefs: address( localhost )
+			port( 3451 )
+			budget(0), friends([])
+		goals:	play
+		join: ws
+
+	}
+
+	agent player1:player.asl {
 		ag-class: vesna.VesnaAgent
 		beliefs: address( localhost )
 			port( 3450 )
@@ -10,10 +20,15 @@ mas arcade {
 	}
 
 	workspace ws {
-		artifact breakout2: artifact.SinglePlayerGameArtifact("Breakout2", 5204)
-		artifact pacman: artifact.SinglePlayerGameArtifact("Pacman", 5201)
-		artifact tetris: artifact.SinglePlayerGameArtifact("Tetris", 5203)
-		artifact breakout: artifact.SinglePlayerGameArtifact("Breakout", 5202)
+		artifact pacman3: artifact.SinglePlayerGameArtifact("Pacman3", 5203)
+		artifact breakout1: artifact.SinglePlayerGameArtifact("Breakout1", 5401)
+		artifact pacman2: artifact.SinglePlayerGameArtifact("Pacman2", 5202)
+		artifact pacman1: artifact.SinglePlayerGameArtifact("Pacman1", 5200)
+		artifact tetris1: artifact.SinglePlayerGameArtifact("Tetris1", 5301)
+		artifact breakout: artifact.SinglePlayerGameArtifact("Breakout", 5400)
+		artifact tokenMachine: artifact.TokenMachineArtifact("TokenMachine", 5100)
+		artifact tetris: artifact.SinglePlayerGameArtifact("Tetris", 5300)
+		artifact pacman: artifact.SinglePlayerGameArtifact("Pacman", 5200)
 		artifact envManager: artifact.EnvManagerArtifact("envManager", 34)
 	}
 }

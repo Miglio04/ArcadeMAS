@@ -38,7 +38,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2085553386495400356, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: agentFile
-      value: grabber.asl
+      value: player.asl
       objectReference: {fileID: 0}
     - target: {fileID: 2085553386495400356, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: goals.Array.size
@@ -46,11 +46,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2085553386495400356, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: 'goals.Array.data[0]'
-      value: 3
+      value: 4
       objectReference: {fileID: 0}
     - target: {fileID: 2085553386495400356, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: waypoints.Array.size
-      value: 1
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 2085553386495400356, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: focusedArtifacts.Array.size
@@ -58,15 +58,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2341087531120083934, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 3.9401116
+      value: -9.98
       objectReference: {fileID: 0}
     - target: {fileID: 2341087531120083934, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.401
+      value: 1.104
       objectReference: {fileID: 0}
     - target: {fileID: 2341087531120083934, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.018
+      value: 2.2
       objectReference: {fileID: 0}
     - target: {fileID: 2341087531120083934, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: m_LocalRotation.w
@@ -98,7 +98,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2803511079346570231, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: m_Name
-      value: npc Variant
+      value: finalAvatarWithEyesGrabbable
       objectReference: {fileID: 0}
     - target: {fileID: 6748385173456011789, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       propertyPath: m_AnchorMax.y
@@ -143,6 +143,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 2803511079346570231, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
       insertIndex: 3
       addedObject: {fileID: 3618639702767048938}
+    - targetCorrespondingSourceObject: {fileID: 2803511079346570231, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1878128393965544838}
   m_SourcePrefab: {fileID: 100100000, guid: 99599b0370991254ba7496a8a1fa8816, type: 3}
 --- !u!1 &3009320282044890931 stripped
 GameObject:
@@ -161,3 +164,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ab52c4862243d324292787833748da46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &1878128393965544838
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3009320282044890931}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b548d8b582edce4aa0df2220ae41832, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  colorHighlight: {r: 1, g: 0, b: 0, a: 1}
+  canvas: {fileID: 0}
+  textComponent: {fileID: 0}
