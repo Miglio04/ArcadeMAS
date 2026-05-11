@@ -31,6 +31,7 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
 
     @INTERNAL_OPERATION
     public void clearTokenMachine() {
+        writeLog("Clearing token machine");
         tokens = 0; // Reset tokens after transaction
         //lock.unlock();
     }
@@ -38,12 +39,14 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
     @INTERNAL_OPERATION
     public void incrementTokens() {
         tokens++;
+        writeLog("Tokens: " + tokens);
     }
 
     @INTERNAL_OPERATION
     public void decrementTokens() {
         if (tokens > 0) {
             tokens--;
+            writeLog("Tokens: " + tokens);
         }
     }
 
@@ -52,6 +55,7 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
         getObsProperty("tokens").updateValue(tokens);
         execInternalOp("signalAgentsByTick");
         signal("tokens", tokens);
+        writeLog("Payment successful");
         clearTokenMachine();
     }
 
