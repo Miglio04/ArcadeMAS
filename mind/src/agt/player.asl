@@ -67,54 +67,85 @@
 { include("libraryPlans.asl") }
 { include("artifacts.asl") }
 
-!play.
+tokens(0).
 
 +!play
-    //: tokens(T) & T > 0
+    : tokens(T) & T > 0 & played(_)
+    <- .print("Attempting to play another game...");
+        lookupArtifact("envManager", ArtId);
+        focus(ArtId);
+        !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Artifacts);
+        Artifacts = [_ | Rest];
+        Rest = [Next | _];
+        stopFocus(ArtId);
+        !reach_dest(Next);
+        .nth(0, Next, Upper); // Get the first character of the string
+        .lower_case(Upper, Lower); // Make it lowercase
+        .replace(Next, Upper, Lower, NormalizedName); // replace the first character.
+        lookupArtifact(NormalizedName, ArtifactId);
+        focus(ArtifactId);
+        playGame[artifact_id(ArtifactId)];
+        .wait(4000);
+        stopGame[artifact_id(ArtifactId)];
+        -+tokens(T-1);
+        stopFocus(ArtifactId);
+        -movement_in_progress(_);
+        +played(Next);
+        !play.
+
++!play
+    : tokens(T) & T > 0
     <- .print("Attempting to play a game...");
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
         !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Artifacts);
-        Artifacts = [First | _];
+        Artifacts = [First | Rest];
         stopFocus(ArtId);
         !reach_dest(First);
-        //.wait({ +reached(place, Dest) });
-        .wait(3000);
         .nth(0, First, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
         .replace(First, Upper, Lower, NormalizedName); // replace the first character.
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
         playGame[artifact_id(ArtifactId)];
+        .wait(4000);
+        stopGame[artifact_id(ArtifactId)];
+        -+tokens(T-1);
         stopFocus(ArtifactId);
-        -movement_in_progress(_).
+        -movement_in_progress(_);
+        +played(First);
+        !play.
 
-// +!play
-//     : tokens(T) & T == 0
-//     <- !buy_tokens.
++!play
+    : tokens(T) & T == 0
+    <- !buy_tokens.
 
-// +!buy_tokens
-//     : true
-//     <- .print("Attempting to buy tokens...");
-//         lookupArtifact("envManager", ArtId);
-//         focus(ArtId);
-//         !retrieve_nearest_artifact_by_type("TokenMachine", Artifact);
-//         stopFocus(ArtId);
-//         !reach_destination(Artifact);
-//         .wait({ +reached(place, Dest) });
-//         .nth(0, First, Upper); // Get the first character of the string
-//         .lower_case(Upper, Lower); // Make it lowercase
-//         .replace(First, Upper, Lower, NormalizedName); 
-//         lookupArtifact(NormalizedName, ArtifactId);
-//         focus(ArtifactId);
-//         incrementTokens()[artifact_id(ArtifactId)];
-//         incrementTokens()[artifact_id(ArtifactId)];
-//         incrementTokens()[artifact_id(ArtifactId)];
-//         incrementTokens()[artifact_id(ArtifactId)];
-//         pay(8)[artifact_id(ArtifactId)];
-//         +tokens(4);
-//         stopFocus(ArtifactId);
-//         -movement_in_progress(_).
++!buy_tokens
+    : true
+    <- .print("Attempting to buy tokens...");
+        lookupArtifact("envManager", ArtId);
+        focus(ArtId);
+        !retrieve_nearest_artifacts_by_type("TokenMachine", Artifacts);
+        Artifacts = [First | _];
+        stopFocus(ArtId);
+        !reach_dest(First);
+        //.wait({ +reached(place, Dest) });
+        .nth(0, First, Upper); // Get the first character of the string
+        .lower_case(Upper, Lower); // Make it lowercase
+        .replace(First, Upper, Lower, NormalizedName); 
+        lookupArtifact(NormalizedName, ArtifactId);
+        focus(ArtifactId);
+        incrementTokens[artifact_id(ArtifactId)];
+        incrementTokens[artifact_id(ArtifactId)];
+        incrementTokens[artifact_id(ArtifactId)];
+        incrementTokens[artifact_id(ArtifactId)];
+        pay[artifact_id(ArtifactId)];
+        .wait(2000);
+        -+tokens(4);
+        .print("Tokens purchased successfully!");
+        stopFocus(ArtifactId);
+        -movement_in_progress(_);
+        !play.
 
 { include("$jacamo/templates/common-cartago.asl") }
 { include("$jacamo/templates/common-moise.asl") }
