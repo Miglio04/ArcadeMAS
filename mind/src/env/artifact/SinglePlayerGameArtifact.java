@@ -27,8 +27,11 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
     public void playGame() {
         signal("available", false);
         writeLog("Started playing " + artifactName);
-        await_time(6000);
-        writeLog("Finished playing " + artifactName);
+    }
+
+    @INTERNAL_OPERATION
+    public void stopGame() {
+        writeLog("Stopped playing " + artifactName);
         execInternalOp("signalAgentsByTick");
         signal("available", true);
     }

@@ -61,7 +61,14 @@ public class AgentScript : MonoBehaviour
             Debug.LogWarning("Warning: No Renderer component found on " + gameObject.name);
         }
 
-        textComponent.text = startingText;
+        if (textComponent != null)
+        {
+            textComponent.text = startingText;
+        }
+        else
+        {
+            Debug.LogWarning("Warning: No TextMeshProUGUI assigned or found for " + gameObject.name + ". Assign it in the Inspector or add one as a child of the Canvas.");
+        }
     }
     #endregion
 

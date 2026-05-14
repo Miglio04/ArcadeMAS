@@ -77,7 +77,6 @@ tokens(0).
         !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Artifacts);
         Artifacts = [_ | Rest];
         Rest = [Next | _];
-        
         stopFocus(ArtId);
         !reach_dest(Next);
         .nth(0, Next, Upper); // Get the first character of the string
@@ -86,6 +85,8 @@ tokens(0).
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
         playGame[artifact_id(ArtifactId)];
+        .wait(4000);
+        stopGame[artifact_id(ArtifactId)];
         -+tokens(T-1);
         stopFocus(ArtifactId);
         -movement_in_progress(_);
@@ -107,6 +108,8 @@ tokens(0).
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
         playGame[artifact_id(ArtifactId)];
+        .wait(4000);
+        stopGame[artifact_id(ArtifactId)];
         -+tokens(T-1);
         stopFocus(ArtifactId);
         -movement_in_progress(_);
@@ -137,7 +140,9 @@ tokens(0).
         incrementTokens[artifact_id(ArtifactId)];
         incrementTokens[artifact_id(ArtifactId)];
         pay[artifact_id(ArtifactId)];
-        +tokens(4);
+        .wait(2000);
+        -+tokens(4);
+        .print("Tokens purchased successfully!");
         stopFocus(ArtifactId);
         -movement_in_progress(_);
         !play.

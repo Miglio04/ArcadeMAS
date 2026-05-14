@@ -31,10 +31,13 @@ public class Artifact : AbstractArtifact
 
     private void OnDestroy()
     {
-        var grabbable = GetXRGrabbable();
+        var grabbable = gameObject.GetComponent<XRGrabInteractable>();
 
-        grabbable.selectEntered.RemoveAllListeners();
-        grabbable.selectExited.RemoveAllListeners();
+        if (grabbable != null)
+        {
+            grabbable.selectEntered.RemoveAllListeners();
+            grabbable.selectExited.RemoveAllListeners();
+        }
     }
 
     protected virtual void Awake()
@@ -43,7 +46,7 @@ public class Artifact : AbstractArtifact
 
         ResolveProperties();
         propertyNames ??= new List<string>(); // If null, initialize the list
-        
+
         propertyNames.Clear();
         // Retrieve all fields
         var fields = GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
@@ -88,7 +91,7 @@ public class Artifact : AbstractArtifact
     protected virtual void OnMessage(object sender, MessageEventArgs e)
     {
         var data = e.Data;
-        
+
         ArtifactMessage message = null;
         try
         {
@@ -100,7 +103,7 @@ public class Artifact : AbstractArtifact
             Debug.LogError("Message could not be converted.");
             return;
         }
-        
+
         try
         {
             var messagePayload = message.MessagePayload;
@@ -116,7 +119,7 @@ public class Artifact : AbstractArtifact
             Debug.LogError($"[{message.AgentName} Artifact] Exception occurred OnMessage " + ex);
         }
     }
-    
+
     private async void RetrieveGrabbableStatus(string artifactName)
     {
         // Create a TaskCompletionSource to await the result
@@ -125,14 +128,14 @@ public class Artifact : AbstractArtifact
             .EnqueueAsync(() =>
             {
                 var artifact = GameObject.Find(artifactName);
-                
+
                 if (artifact == null)
                 {
                     Debug.LogError($"Artifact {artifactName} not found.");
                     tcs.SetResult(false);
                     return;
                 }
-                
+
                 var artifactComponent = artifact.GetComponent<Artifact>();
                 if (artifactComponent == null)
                 {
@@ -140,7 +143,7 @@ public class Artifact : AbstractArtifact
                     tcs.SetResult(false);
                     return;
                 }
-                
+
                 var grabbable = artifactComponent.isGrabbable;
                 tcs.SetResult(grabbable);
             });
@@ -149,21 +152,21 @@ public class Artifact : AbstractArtifact
         wsChannel.sendMessage(UnityJacamoIntegrationUtil.CreateAndConvertJacamoMessageIntoJsonString(
             "grabbableStatus", null, "is_grabbable", artifactName, grabbableStatus));
     }
-    
+
     private void ResolveProperties()
     {
         var props = ArtifactResolver.GetAllProperties($"{artifactType}Artifact");
-    
+
         if (props is not { Count: > 0 }) return;
-        
+
         Properties = new Dictionary<string, object>();
         foreach (var prop in props)
-        { 
+        {
             if (prop.Name == "canBeGrabbedByHumanUser")
             {
                 CreateVRGrabbableComponent();
             }
-            
+
             Properties[prop.Name] = prop.Value;
         }
     }
@@ -181,9 +184,9 @@ public class Artifact : AbstractArtifact
             gameObject.AddComponent<BoxCollider>();
             Debug.Log("[DEBUG] BoxCollider added to Artifact GameObject for XR grabbing.");
         }
-        
+
         Debug.Log("[DEBUG] VR Grabbable successfully created.");
-        
+
         // Listeners for grabbed and release events, we'll send the wsMessages from here
         grabbable.selectEntered.AddListener(OnGrabbedVR);
         grabbable.selectExited.AddListener(OnReleasedVR);
@@ -192,31 +195,31 @@ public class Artifact : AbstractArtifact
     private void OnGrabbedVR(SelectEnterEventArgs arg)
     {
         Debug.Log("[DEBUG] Artifact grabbed in VR.");
-        
+
         // Send a Brain Message to JaCaMo
         var msg = new BrainMessage("user", gameObject.name, "grabbed", null);
         wsChannel.sendMessage(JsonConvert.SerializeObject(msg));
-        
+
     }
 
     private void OnReleasedVR(SelectExitEventArgs args)
     {
         Debug.Log("[DEBUG] Artifact released in VR.");
-        
+
         // Send a Brain Message to JaCaMo
         var msg = new BrainMessage("user", gameObject.name, "grabbed", null);
         wsChannel.sendMessage(JsonConvert.SerializeObject(msg));
     }
-    
+
     private void SetupInteractionManager(XRGrabInteractable grabbable)
     {
         grabbable.interactionManager = FindFirstObjectByType<XRInteractionManager>();
         if (grabbable.interactionManager != null) return;
-        
+
         grabbable.interactionManager = gameObject.AddComponent<XRInteractionManager>();
         Debug.Log("[DEBUG] XRInteractionManager component added to Artifact GameObject.");
     }
-    
+
     private XRGrabInteractable GetXRGrabbable()
     {
         var grabbable = gameObject.GetComponent<XRGrabInteractable>();
@@ -277,23 +280,41 @@ public class Artifact : AbstractArtifact
     }
     */
 
-    public void Play()
+    [Header("JaCaMo Action Settings")]
+    [HideInInspector] public string primaryActionToTrigger;
+    [HideInInspector] public string secondaryActionToTrigger;
+    [HideInInspector] public string tertiaryActionToTrigger;
+
+    public void ExecutePrimaryAction()
     {
-        if (artifactType == ArtifactTypeEnum.SinglePlayerGame)
-        {
-            Debug.Log($"[DEBUG] Gioco {gameObject.name} Iniziato!");
-
-            string jsonMessage = "{\"type\": \"playGame\"}";
-
-            if (wsChannel != null)
-            {
-                wsChannel.sendMessage(jsonMessage);
-            }
-            else
-            {
-                Debug.LogWarning("[WARNING] WebSocket non connessa.");
-            }
-        }
+        SendActionToJacamo(primaryActionToTrigger);
     }
 
+    public void ExecuteSecondaryAction()
+    {
+        SendActionToJacamo(secondaryActionToTrigger);
+    }
+
+    public void ExecuteTertiaryAction()
+    {
+        SendActionToJacamo(tertiaryActionToTrigger);
+    }
+
+    private void SendActionToJacamo(string actionName)
+    {
+        if (string.IsNullOrEmpty(actionName) || actionName == "None") return;
+
+        Debug.Log($"[DEBUG] Esecuzione azione '{actionName}' su {gameObject.name} inviata a JaCaMo!");
+
+        string jsonMessage = $"{{\"type\": \"{actionName}\"}}";
+
+        if (wsChannel != null)
+        {
+            wsChannel.sendMessage(jsonMessage);
+        }
+        else
+        {
+            Debug.LogWarning("[WARNING] WebSocket non connessa.");
+        }
+    }
 }

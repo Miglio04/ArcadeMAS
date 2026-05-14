@@ -20,4 +20,9 @@ public class AbstractArtifact : AbstractMasElement
     public ArtifactTypeEnum ArtifactType => artifactType;
 
     public List<string> PropertyNames => propertyNames;
+
+    public string GetArtifactTypeName()
+    {
+        return artifactType.ToString();
+    }
 }
