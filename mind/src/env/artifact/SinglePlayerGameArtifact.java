@@ -46,6 +46,9 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
                 if (type.equals("playGame")) {
                     execInternalOp("playGame");
                 }
+                else if (type.equals("stopGame")) {
+                    execInternalOp("stopGame");
+                }
             }
         }
         catch (Exception e) {
