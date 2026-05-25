@@ -1,73 +1,5 @@
-// tokens(0).
-
-// +!request_info
-//     <- .wait(1000);
-//         joinWorkspace("ws"); 
-//         .print("Requesting game info from cashier...");
-//         .send(cashier, askOne, available_games(Info)).
-
-// +available_games(false)[source(cashier)]
-//     <- print("Cashier is not ready to provide game info yet.");
-//         .wait(500);
-//         -available_games(false)[source(cashier)];
-//         !request_info.
-
-// +available_games(Info)[source(cashier)]
-//     <- .print("Received available games info from cashier: ", Info);
-//         !focus_on_games(Info);
-//         !play(Info).
-
-// +!focus_on_games([]).
-
-// +!focus_on_games([Game|Rest])
-//     <- .print("Focusing on game: ", Game);
-//         lookupArtifact(Game, Id);
-//         focus(Id);
-//         !focus_on_games(Rest).
-
-// +!play(Games)
-//     : tokens(Tokens) & Tokens > 0
-//     <- [Game|Rest] = Games;
-//         lookupArtifact(Game, Id);
-//         .print("Attempting to play game: ", Game);
-//         playGame(Success)[artifact_id(Id)];
-//         !check_play_result(Success, Games).
-
-// +!check_play_result(true, _)
-//     : tokens(Tokens) & available_games(AvailableGames)
-//     <- .print("Played game successfully!");
-//         -+tokens(Tokens-1);
-//         !play(AvailableGames).
-
-// +!check_play_result(false, Games)
-//     <- .print("Failed to play game. It might be currently unavailable.");
-//         [_|Rest] = Games;
-//         !play(Rest).
-
-// +!play(Games)
-//     : tokens(Tokens) & budget(Budget) & Tokens = 0
-//     <- .print("Not enough tokens to play. Buying more tokens!");
-//         .wait(1000);
-//         !buy_tokens(5, Budget).
-
-// +!buy_tokens(Qty, Budget)
-//     <- .send(cashier, tell, buy_tokens(Qty, Budget)).
-
-// +tokens_bought(Qty, TotalCost)[source(cashier)]
-//     : budget(Budget) & available_games(Games)
-//     <- NewBudget = Budget - TotalCost;
-//         -+budget(NewBudget);
-//         -tokens_bought(Qty, TotalCost)[source(cashier)];
-//         -+tokens(Qty);
-//         !play(Games).
-
-// +~tokens_bought(_, _)[source(cashier)]
-//     <- .print("Failed to buy tokens. Please check your budget and try again.").
-
 { include("libraryPlans.asl") }
 { include("artifacts.asl") }
-
-tokens(0).
 
 +!play
     : tokens(T) & T > 0 & played(_)
@@ -85,7 +17,8 @@ tokens(0).
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
         playGame[artifact_id(ArtifactId)];
-        .wait(4000);
+        Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
+        .wait(Val);
         stopGame[artifact_id(ArtifactId)];
         -+tokens(T-1);
         stopFocus(ArtifactId);
@@ -108,7 +41,8 @@ tokens(0).
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
         playGame[artifact_id(ArtifactId)];
-        .wait(4000);
+        Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
+        .wait(Val);
         stopGame[artifact_id(ArtifactId)];
         -+tokens(T-1);
         stopFocus(ArtifactId);
@@ -121,7 +55,7 @@ tokens(0).
     <- !buy_tokens.
 
 +!buy_tokens
-    : true
+    : budget(B) & token_price(TokenPrice) & B >= TokenPrice
     <- .print("Attempting to buy tokens...");
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
@@ -129,23 +63,49 @@ tokens(0).
         Artifacts = [First | _];
         stopFocus(ArtId);
         !reach_dest(First);
-        //.wait({ +reached(place, Dest) });
         .nth(0, First, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
         .replace(First, Upper, Lower, NormalizedName); 
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
-        incrementTokens[artifact_id(ArtifactId)];
-        incrementTokens[artifact_id(ArtifactId)];
-        incrementTokens[artifact_id(ArtifactId)];
-        incrementTokens[artifact_id(ArtifactId)];
+        Qty = math.floor(1 + math.random((4 - 1) + 1));
+        !increment_tokens_times(Qty, ArtifactId);
         pay[artifact_id(ArtifactId)];
-        .wait(2000);
-        -+tokens(4);
-        .print("Tokens purchased successfully!");
+        Val = math.floor(1 + math.random((4 - 1) + 1)) * 1000;
+        .wait(Val);
+        -+tokens(Qty);
+        TotalCost = Qty * TokenPrice;
+        -+budget(B - TotalCost);
+        .print("Tokens purchased successfully! Bought ", Qty, " tokens.");
         stopFocus(ArtifactId);
         -movement_in_progress(_);
         !play.
+
++!buy_tokens
+    : budget(B) & token_price(TokenPrice) & B < TokenPrice
+    <- .print("Not enough budget to buy tokens. Please check your budget and try again.");
+        lookupArtifact("envManager", ArtId);
+        focus(ArtId);
+        !retrieve_nearest_artifacts_by_type("Door", Artifacts);
+        Artifacts = [First | _];
+        stopFocus(ArtId);
+        !reach_dest(First).
+
++!increment_tokens_times(0, ArtifactId)
+    <- true.
+
++!increment_tokens_times(N, ArtifactId)
+    : N > 0 & budget(B) & token_price(TokenPrice) & B >= TokenPrice * N
+    <- incrementTokens[artifact_id(ArtifactId)];
+       N1 = N - 1;
+       !increment_tokens_times(N1, ArtifactId).
+
++!increment_tokens_times(N, ArtifactId)
+    : N > 0 & (budget(B) & token_price(TokenPrice) & B < TokenPrice * N)
+    <- MaxAffordable = math.floor(B / TokenPrice);
+       incrementTokens[artifact_id(ArtifactId)];
+       N1 = N - 1;
+       !increment_tokens_times(N1, ArtifactId).
 
 { include("$jacamo/templates/common-cartago.asl") }
 { include("$jacamo/templates/common-moise.asl") }

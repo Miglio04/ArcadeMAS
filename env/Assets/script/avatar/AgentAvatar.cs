@@ -108,8 +108,14 @@ public abstract class AgentAvatar : AbstractMasElement
             Debug.LogError($"Destination is null.");
             return;
         }
-        
-        agent.SetDestination(destObject.transform.position);
+        var child = destObject.transform.Find("AnchorPoint");
+        if (child == null)
+        {
+            Debug.LogError($"AnchorPoint not found in {destObject.name}");
+            return;
+        }
+
+        agent.SetDestination(child.transform.position);
     }
 
     public void SendMessageToJaCaMoBrain( string message )

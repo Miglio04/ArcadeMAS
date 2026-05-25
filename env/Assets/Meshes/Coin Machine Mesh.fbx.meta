@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 1059f115adb7f4b5597cf683cefe08e6
+guid: 5c07f89385f9343b4a0c37c19cee91b6
 ModelImporter:
   serializedVersion: 22200
   internalIDToNameTable: []
@@ -8,72 +8,72 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Bill Acceptor
-    second: {fileID: 2100000, guid: eea6bb2c38bfe438192a3d90b7e586a9, type: 2}
+    second: {fileID: 2100000, guid: 3a34aeb50199941a4882fc3a7141564c, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Button
-    second: {fileID: 2100000, guid: c28ec9a0cce6e4832a5e9b0de14e5033, type: 2}
+    second: {fileID: 2100000, guid: a46c9e93f79774dd5bedb816aa92f0b6, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Button Base
-    second: {fileID: 2100000, guid: 3682dd312c0a54b4dbb427a23346a9e2, type: 2}
+    second: {fileID: 2100000, guid: 8e6a5bd5003604b9bb7fa5e9fb39bf53, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Card Light
-    second: {fileID: 2100000, guid: 7b4718908387341febebfea58d187ab9, type: 2}
+    second: {fileID: 2100000, guid: 8202d7a2eb92b4edb9b5df25ae4bdd53, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Closet
-    second: {fileID: 2100000, guid: 7d4e1dcd6bfa545d28b666f6b8b8c912, type: 2}
+    second: {fileID: 2100000, guid: a934247174eed451185ba29b60d5829d, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Coin Acceptor
-    second: {fileID: 2100000, guid: a62cfa93b398d4f269f85929a89096a2, type: 2}
+    second: {fileID: 2100000, guid: 39ba8e9bbee1847beb86986264c5eb71, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Contactless
-    second: {fileID: 2100000, guid: f3ea44eb8ac494c608c49bfc876e81a4, type: 2}
+    second: {fileID: 2100000, guid: 2d68d03dc02944dc4b75124f265c0189, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: LED
-    second: {fileID: 2100000, guid: 50d06e9fec09b42dc9f87ba2d3466383, type: 2}
+    second: {fileID: 2100000, guid: e37ecf896c0934fef8940f2ad2914244, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Machine
-    second: {fileID: 2100000, guid: c2a712d04147a45c786c639f707c913d, type: 2}
+    second: {fileID: 2100000, guid: ad9b83cfad6e64089b7a98ee55ec237c, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Machine 2
-    second: {fileID: 2100000, guid: f4da534e783f046d7ac066852715691a, type: 2}
+    second: {fileID: 2100000, guid: 9c83c6bfa7c1e4117bf1e7a3a58e2923, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Screen card
-    second: {fileID: 2100000, guid: 39cb5dede24184eb69ca26c54c84c083, type: 2}
+    second: {fileID: 2100000, guid: 5321727559c3b4c51981d103125efc17, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Screen change
-    second: {fileID: 2100000, guid: dfb7b0dba857545a8a3fd2b94417c7d6, type: 2}
+    second: {fileID: 2100000, guid: 2962cc7a253db4d60b82ece6c0122234, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Screen credit
-    second: {fileID: 2100000, guid: 0199f80f4692642299d3a6ffa9fcccc9, type: 2}
+    second: {fileID: 2100000, guid: 85a7279ae36d84c56b1c8a930fe138c2, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Take tokens
-    second: {fileID: 2100000, guid: ed4b037337a5e474c8cb0f9927ae2476, type: 2}
+    second: {fileID: 2100000, guid: df191898b99514fe8a7990916df6b89e, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
