@@ -4,7 +4,6 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 
-[CustomEditor(typeof(Artifact))]
 public class ArtifactCustomEditor : Editor
 {
     private readonly string javaFolderPath = Path.Combine(Directory.GetParent(Directory.GetParent(Application.dataPath).FullName).FullName, "mind", "src", "env", "artifact");

@@ -10,10 +10,10 @@ mas arcade {
 	}
 
 	workspace ws {
-		artifact tetris: artifact.SinglePlayerGameArtifact("Tetris", 5300)
-		artifact breakout: artifact.SinglePlayerGameArtifact("Breakout", 5400)
 		artifact pacman: artifact.SinglePlayerGameArtifact("Pacman", 5200)
 		artifact tokenMachine: artifact.TokenMachineArtifact("TokenMachine", 5100)
+		artifact tetris: artifact.SinglePlayerGameArtifact("Tetris", 5300)
+		artifact breakout: artifact.SinglePlayerGameArtifact("Breakout", 5400)
 		artifact door: artifact.DoorArtifact("Door", 4000)
 		artifact envManager: artifact.EnvManagerArtifact("envManager", 34)
 	}

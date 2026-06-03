@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Video;
 using WebSocketSharp;
 using script.core.util;
 using Unity.VisualScripting;
@@ -107,12 +108,19 @@ public class Artifact : AbstractArtifact
         try
         {
             var messagePayload = message.MessagePayload;
-            switch (messagePayload)
+            // Ensure Unity API calls run on main thread
+            UnityMainThreadDispatcher.Instance().Enqueue(() =>
             {
-                case "is_grabbable":
-                    RetrieveGrabbableStatus(message.AgentName);
-                    break;
-            }
+                switch (messagePayload)
+                {
+                    case "is_grabbable":
+                        RetrieveGrabbableStatus(message.AgentName);
+                        break;
+                    case "triggered":
+                        HandleTriggeredEvent(message.AgentEvent);
+                        break;
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -151,6 +159,161 @@ public class Artifact : AbstractArtifact
 
         wsChannel.sendMessage(UnityJacamoIntegrationUtil.CreateAndConvertJacamoMessageIntoJsonString(
             "grabbableStatus", null, "is_grabbable", artifactName, grabbableStatus));
+    }
+
+    private void HandleTriggeredEvent(string agentEvent)
+    {
+        switch (agentEvent)
+        {
+            case "playGame":
+                HandlePlayGame();
+                break;
+            case "stopGame":
+                HandleStopGame();
+                break;
+            case "pay":
+                HandlePayAction();
+                break;
+            case "incrementTokens":
+                HandleIncrementTokens();
+                break;
+            case "decrementTokens":
+                HandleDecrementTokens();
+                break;
+            case "clearTokenMachine":
+                HandleClearTokenMachine();
+                break;
+            default:
+                Debug.LogWarning($"Unknown agent event: {agentEvent}");
+                break;
+        }
+    }
+
+    private void HandlePlayGame()
+    {
+        Transform screenOffChild = FindDeepChild(transform, "ScreenOff");
+        Transform screenPlayChild = FindDeepChild(transform, "ScreenOn");
+
+        if (screenOffChild != null)
+        {
+            screenOffChild.gameObject.SetActive(false);
+            Debug.Log($"[{gameObject.name}] ScreenOff deactivated");
+        }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name}] ScreenOff child not found");
+        }
+
+        if (screenPlayChild != null)
+        {
+            if (!screenPlayChild.gameObject.activeSelf)
+            {
+                screenPlayChild.gameObject.SetActive(true);
+                Debug.Log($"[{gameObject.name}] ScreenPlay activated");
+            }
+
+            var player = screenPlayChild.GetComponent<VideoPlayer>();
+            if (player == null)
+            {
+                player = screenPlayChild.GetComponentInChildren<VideoPlayer>(true);
+            }
+
+            if (player != null)
+            {
+                if (!player.isPrepared)
+                {
+                    player.Prepare();
+                    Debug.Log($"[{gameObject.name}] Preparing VideoPlayer for playback");
+                }
+
+                player.Play();
+                Debug.Log($"[{gameObject.name}] ScreenPlay video started; isPlaying={player.isPlaying}");
+            }
+            else
+            {
+                Debug.LogWarning($"[{gameObject.name}] VideoPlayer not found on ScreenPlay or its children");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name}] ScreenPlay child not found");
+        }
+    }
+
+    private void HandleStopGame()
+    {
+        Transform screenPlayChild = FindDeepChild(transform, "ScreenOn");
+        Transform screenOffChild = FindDeepChild(transform, "ScreenOff");
+
+        if (screenPlayChild != null)
+        {
+            var player = screenPlayChild.GetComponent<VideoPlayer>();
+            if (player == null)
+            {
+                player = screenPlayChild.GetComponentInChildren<VideoPlayer>(true);
+            }
+
+            if (player != null)
+            {
+                player.Stop();
+                Debug.Log($"[{gameObject.name}] ScreenPlay video stopped; isPlaying={player.isPlaying}");
+            }
+            else
+            {
+                Debug.LogWarning($"[{gameObject.name}] VideoPlayer not found on ScreenPlay or its children");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name}] ScreenPlay child not found");
+        }
+
+        if (screenOffChild != null)
+        {
+            screenOffChild.gameObject.SetActive(true);
+            Debug.Log($"[{gameObject.name}] ScreenOff activated");
+        }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name}] ScreenOff child not found");
+        }
+    }
+
+    private Transform FindDeepChild(Transform parent, string childName)
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name == childName)
+                return child;
+            var result = FindDeepChild(child, childName);
+            if (result != null)
+                return result;
+        }
+        return null;
+    }
+
+    private void HandlePayAction()
+    {
+        Debug.Log($"[{gameObject.name}] Pay action triggered");
+        // Implement token machine pay logic here
+    }
+
+    private void HandleIncrementTokens()
+    {
+        Debug.Log($"[{gameObject.name}] Increment tokens triggered");
+        // Implement token increment logic here
+    }
+
+    private void HandleDecrementTokens()
+    {
+        Debug.Log($"[{gameObject.name}] Decrement tokens triggered");
+        // Implement token decrement logic here
+    }
+
+    private void HandleClearTokenMachine()
+    {
+        Debug.Log($"[{gameObject.name}] Clear token machine triggered");
+        // Implement token machine clear logic here
     }
 
     private void ResolveProperties()

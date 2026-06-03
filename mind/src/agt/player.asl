@@ -2,28 +2,35 @@
 { include("artifacts.asl") }
 
 +!play
-    : tokens(T) & T > 0 & played(_)
-    <- .print("Attempting to play another game...");
-        lookupArtifact("envManager", ArtId);
-        focus(ArtId);
-        !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Artifacts);
-        Artifacts = [_ | Rest];
-        Rest = [Next | _];
-        stopFocus(ArtId);
-        !reach_dest(Next);
-        .nth(0, Next, Upper); // Get the first character of the string
+    : tokens(T) & T > 0 & games(Games) & not games([])
+    <- !get_random_game;
+        ?chosenGame(Game);
+        .print("Attempting to play ", Game, "...");
+        !reach_dest(Game);
+        .nth(0, Game, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
-        .replace(Next, Upper, Lower, NormalizedName); // replace the first character.
+        .replace(Game, Upper, Lower, NormalizedName); // replace the first character.
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
-        playGame[artifact_id(ArtifactId)];
+
+        // Blocco test owner
+        .my_name(Me);
+        if ( not owner("")[artifact_id(ArtifactId)] & not owner(Me)[artifact_id(ArtifactId)] ) {
+            .print("The artifact ", NormalizedName, " is occupied. Waiting for it to become available...");
+            .wait( owner("")[artifact_id(ArtifactId)] );
+            .print("The artifact is now available! Proceeding.");
+            .wait(1000);
+        }
+        // Fine blocco test owner
+
+        playGame(Me)[artifact_id(ArtifactId)];
         Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
         .wait(Val);
-        stopGame[artifact_id(ArtifactId)];
+        stopGame(Me)[artifact_id(ArtifactId)];
         -+tokens(T-1);
         stopFocus(ArtifactId);
+        -chosenGame(Game);
         -movement_in_progress(_);
-        +played(Next);
         !play.
 
 +!play
@@ -31,28 +38,47 @@
     <- .print("Attempting to play a game...");
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
-        !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Artifacts);
-        Artifacts = [First | Rest];
+        !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Games);
+        +games(Games);
+        !get_random_game;
+        ?chosenGame(Game);
         stopFocus(ArtId);
-        !reach_dest(First);
-        .nth(0, First, Upper); // Get the first character of the string
+        !reach_dest(Game);
+        .nth(0, Game, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
-        .replace(First, Upper, Lower, NormalizedName); // replace the first character.
+        .replace(Game, Upper, Lower, NormalizedName); // replace the first character.
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
-        playGame[artifact_id(ArtifactId)];
+
+        // Blocco test owner
+        .my_name(Me);
+        if ( not owner("")[artifact_id(ArtifactId)] & not owner(Me)[artifact_id(ArtifactId)] ) {
+            .print("The artifact ", NormalizedName, " is occupied. Waiting for it to become available...");
+            .wait( owner("")[artifact_id(ArtifactId)] );
+            .print("The artifact is now available! Proceeding.");
+            .wait(1000);
+        }
+        // Fine blocco test owner
+
+        playGame(Me)[artifact_id(ArtifactId)];
         Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
         .wait(Val);
-        stopGame[artifact_id(ArtifactId)];
+        stopGame(Me)[artifact_id(ArtifactId)];
         -+tokens(T-1);
         stopFocus(ArtifactId);
+        -chosenGame(Game);
         -movement_in_progress(_);
-        +played(First);
         !play.
 
 +!play
     : tokens(T) & T == 0
     <- !buy_tokens.
+
++!get_random_game
+    : games(Games) & not games([])
+    <- .shuffle(Games, ShuffledGames);
+        .nth(0, ShuffledGames, Game);
+        +chosenGame(Game).
 
 +!buy_tokens
     : budget(B) & token_price(TokenPrice) & B >= TokenPrice
@@ -60,19 +86,30 @@
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
         !retrieve_nearest_artifacts_by_type("TokenMachine", Artifacts);
-        Artifacts = [First | _];
+        Artifacts = [Game | _];
         stopFocus(ArtId);
-        !reach_dest(First);
-        .nth(0, First, Upper); // Get the first character of the string
+        !reach_dest(Game);
+        .nth(0, Game, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
-        .replace(First, Upper, Lower, NormalizedName); 
+        .replace(Game, Upper, Lower, NormalizedName); 
         lookupArtifact(NormalizedName, ArtifactId);
         focus(ArtifactId);
+
+        // Blocco test owner
+        .my_name(Me);
+        if ( not owner("")[artifact_id(ArtifactId)] & not owner(Me)[artifact_id(ArtifactId)] ) {
+            .print("The artifact ", NormalizedName, " is occupied. Waiting for it to become available...");
+            .wait( owner("")[artifact_id(ArtifactId)] );
+            .print("The artifact is now available! Proceeding.");
+            .wait(1000);
+        }
+        // Fine blocco test owner
+
         Qty = math.floor(1 + math.random((4 - 1) + 1));
         !increment_tokens_times(Qty, ArtifactId);
-        pay[artifact_id(ArtifactId)];
-        Val = math.floor(1 + math.random((4 - 1) + 1)) * 1000;
+        Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
         .wait(Val);
+        pay(Me)[artifact_id(ArtifactId)];
         -+tokens(Qty);
         TotalCost = Qty * TokenPrice;
         -+budget(B - TotalCost);
@@ -87,25 +124,27 @@
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
         !retrieve_nearest_artifacts_by_type("Door", Artifacts);
-        Artifacts = [First | _];
+        Artifacts = [Door | _];
         stopFocus(ArtId);
-        !reach_dest(First).
+        !reach_dest(Door).
 
 +!increment_tokens_times(0, ArtifactId)
     <- true.
 
 +!increment_tokens_times(N, ArtifactId)
     : N > 0 & budget(B) & token_price(TokenPrice) & B >= TokenPrice * N
-    <- incrementTokens[artifact_id(ArtifactId)];
-       N1 = N - 1;
-       !increment_tokens_times(N1, ArtifactId).
+    <- .my_name(Me);
+        incrementTokens(Me)[artifact_id(ArtifactId)];
+        N1 = N - 1;
+        !increment_tokens_times(N1, ArtifactId).
 
 +!increment_tokens_times(N, ArtifactId)
     : N > 0 & (budget(B) & token_price(TokenPrice) & B < TokenPrice * N)
     <- MaxAffordable = math.floor(B / TokenPrice);
-       incrementTokens[artifact_id(ArtifactId)];
-       N1 = N - 1;
-       !increment_tokens_times(N1, ArtifactId).
+        .my_name(Me);
+        incrementTokens(Me)[artifact_id(ArtifactId)];
+        N1 = N - 1;
+        !increment_tokens_times(N1, ArtifactId).
 
 { include("$jacamo/templates/common-cartago.asl") }
 { include("$jacamo/templates/common-moise.asl") }

@@ -1,12 +1,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using script.core.util;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
+using System.Text.RegularExpressions;
 
 
 [CustomEditor(typeof(Artifact), true)]
@@ -14,6 +16,7 @@ public class ArtifactEditor : Editor
 {
 
     public VisualTreeAsset visualTree;
+    private readonly string javaFolderPath = Path.Combine(Directory.GetParent(Directory.GetParent(Application.dataPath).FullName).FullName, "mind", "src", "env", "artifact");
     // Script that has dynamic inspector
     private Artifact _artifactScript;
     // Artifact type
@@ -167,6 +170,70 @@ public class ArtifactEditor : Editor
         {
             properties[key] = value;
         }
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Interazione Dinamica JaCaMo", EditorStyles.boldLabel);
+
+        var artifactTypeString = _artifactScript.GetArtifactTypeName();
+        var javaClassName = artifactTypeString + "Artifact";
+        var extractedActions = ExtractFunctionsFromJava(javaClassName);
+
+        if (extractedActions.Length > 0)
+        {
+            var optionsList = new List<string> { "None" };
+            optionsList.AddRange(extractedActions);
+            var availableActions = optionsList.ToArray();
+
+            EditorGUILayout.Space();
+
+            var primaryIndex = Mathf.Max(0, Array.IndexOf(availableActions, _artifactScript.primaryActionToTrigger));
+            primaryIndex = EditorGUILayout.Popup("Azione Primaria", primaryIndex, availableActions);
+            _artifactScript.primaryActionToTrigger = availableActions[primaryIndex];
+
+            var secondaryIndex = Mathf.Max(0, Array.IndexOf(availableActions, _artifactScript.secondaryActionToTrigger));
+            secondaryIndex = EditorGUILayout.Popup("Azione Secondaria", secondaryIndex, availableActions);
+            _artifactScript.secondaryActionToTrigger = availableActions[secondaryIndex];
+
+            var tertiaryIndex = Mathf.Max(0, Array.IndexOf(availableActions, _artifactScript.tertiaryActionToTrigger));
+            tertiaryIndex = EditorGUILayout.Popup("Azione Terziaria", tertiaryIndex, availableActions);
+            _artifactScript.tertiaryActionToTrigger = availableActions[tertiaryIndex];
+        }
+        else
+        {
+            EditorGUILayout.HelpBox($"Impossibile trovare funzioni. Controlla che il file {javaClassName}.java esista nel percorso: {javaFolderPath} e contenga metodi public/@OPERATION.", MessageType.Warning);
+        }
+
+        if (GUI.changed)
+        {
+            EditorUtility.SetDirty(_artifactScript);
+        }
+    }
+
+    private string[] ExtractFunctionsFromJava(string javaClassName)
+    {
+        var fullPath = Path.Combine(javaFolderPath, javaClassName + ".java");
+
+        if (!File.Exists(fullPath))
+        {
+            return Array.Empty<string>();
+        }
+
+        var foundFunctions = new List<string>();
+        var fileContent = File.ReadAllText(fullPath);
+        var functionRegex = new Regex(@"@(?:INTERNAL_)?OPERATION\s+public\s+void\s+([a-zA-Z0-9_]+)\s*\(");
+        var matches = functionRegex.Matches(fileContent);
+
+        foreach (Match match in matches)
+        {
+            var functionName = match.Groups[1].Value;
+
+            if (functionName != "init" && !foundFunctions.Contains(functionName))
+            {
+                foundFunctions.Add(functionName);
+            }
+        }
+
+        return foundFunctions.ToArray();
     }
     private void ShowAndHide(string propertyName)
     {

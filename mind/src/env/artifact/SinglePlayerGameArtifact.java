@@ -5,15 +5,9 @@ import artifact.lib.model.WsMessage;
 import artifact.lib.utils.ObjectMapperUtils;
 import cartago.INTERNAL_OPERATION;
 import cartago.OPERATION;
-import cartago.OpFeedbackParam;
-import jason.stdlib.signal;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-
-import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.List;
 
 public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
     @OPERATION
@@ -21,19 +15,40 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
         super.init(artifactName, webSocketPort);
         writeLog("Inizializing Single Player Game");
         defineObsProperty("type", "singlePlayerGame");
+        defineObsProperty("owner", "");
     }
 
     @INTERNAL_OPERATION
-    public void playGame() {
+    public void playGame(String owner) {
+        getObsProperty("owner").updateValue(owner);
         signal("available", false);
         writeLog("Started playing " + artifactName);
+        
+        notifyUnityAction("playGame", owner);
     }
 
     @INTERNAL_OPERATION
-    public void stopGame() {
+    public void stopGame(String owner) {
+        getObsProperty("owner").updateValue(owner);
+        
         writeLog("Stopped playing " + artifactName);
         execInternalOp("signalAgentsByTick");
         signal("available", true);
+        
+        notifyUnityAction("stopGame", owner);
+        
+        getObsProperty("owner").updateValue("");
+    }
+
+    private void notifyUnityAction(String actionName, String requestingAgent) {
+        WsMessage wsMessage = new WsMessage();
+        wsMessage.setMessageType("artifactAction");
+        wsMessage.setMessagePayload("triggered");
+        wsMessage.setAgentEvent(actionName);
+        wsMessage.setAgentName(this.artifactName);
+        wsMessage.setParam(requestingAgent);
+
+        send(ObjectMapperUtils.convertIntoJsonString(wsMessage));
     }
 
     @Override
@@ -44,10 +59,10 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
             if (msg.has("type")) {
                 String type = msg.getString("type");
                 if (type.equals("playGame")) {
-                    execInternalOp("playGame");
+                    execInternalOp("playGame", "user");
                 }
                 else if (type.equals("stopGame")) {
-                    execInternalOp("stopGame");
+                    execInternalOp("stopGame", "user");
                 }
             }
         }
