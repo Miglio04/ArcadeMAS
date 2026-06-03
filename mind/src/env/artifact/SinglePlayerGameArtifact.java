@@ -8,45 +8,52 @@ import cartago.OPERATION;
 
 import org.json.JSONObject;
 
+import java.util.Map;
+
 
 public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
+    private static final String OWNER_PROPERTY = "owner";
+    private static final String PLAY_GAME_ACTION = "playGame";
+    private static final String STOP_GAME_ACTION = "stopGame";
+
+    @Override
     @OPERATION
     public void init(String artifactName, int webSocketPort) {
         super.init(artifactName, webSocketPort);
         writeLog("Inizializing Single Player Game");
         defineObsProperty("type", "singlePlayerGame");
-        defineObsProperty("owner", "");
+        defineObsProperty(OWNER_PROPERTY, "");
     }
 
     @INTERNAL_OPERATION
     public void playGame(String owner) {
-        getObsProperty("owner").updateValue(owner);
+        getObsProperty(OWNER_PROPERTY).updateValue(owner);
         signal("available", false);
         writeLog("Started playing " + artifactName);
         
-        notifyUnityAction("playGame", owner);
+        notifyUnityAction(PLAY_GAME_ACTION, Map.of(OWNER_PROPERTY, owner));
     }
 
     @INTERNAL_OPERATION
     public void stopGame(String owner) {
-        getObsProperty("owner").updateValue(owner);
+        getObsProperty(OWNER_PROPERTY).updateValue(owner);
         
         writeLog("Stopped playing " + artifactName);
         execInternalOp("signalAgentsByTick");
         signal("available", true);
         
-        notifyUnityAction("stopGame", owner);
+        notifyUnityAction(STOP_GAME_ACTION, Map.of(OWNER_PROPERTY, owner));
         
-        getObsProperty("owner").updateValue("");
+        getObsProperty(OWNER_PROPERTY).updateValue("");
     }
 
-    private void notifyUnityAction(String actionName, String requestingAgent) {
+    private void notifyUnityAction(String actionName, Map<String, String> params) {
         WsMessage wsMessage = new WsMessage();
         wsMessage.setMessageType("artifactAction");
         wsMessage.setMessagePayload("triggered");
         wsMessage.setAgentEvent(actionName);
         wsMessage.setAgentName(this.artifactName);
-        wsMessage.setParam(requestingAgent);
+        wsMessage.setParam(params);
 
         send(ObjectMapperUtils.convertIntoJsonString(wsMessage));
     }
@@ -58,11 +65,11 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
             JSONObject msg = new JSONObject(message);
             if (msg.has("type")) {
                 String type = msg.getString("type");
-                if (type.equals("playGame")) {
-                    execInternalOp("playGame", "user");
+                if (type.equals(PLAY_GAME_ACTION)) {
+                    execInternalOp(PLAY_GAME_ACTION, "user");
                 }
-                else if (type.equals("stopGame")) {
-                    execInternalOp("stopGame", "user");
+                else if (type.equals(STOP_GAME_ACTION)) {
+                    execInternalOp(STOP_GAME_ACTION, "user");
                 }
             }
         }

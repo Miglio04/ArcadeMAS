@@ -1,14 +1,21 @@
 package artifact;
 
-import cartago.*;
 import artifact.lib.maselements.AbstractMasElementArtifact;
-import cartago.AgentId;
+import artifact.lib.model.WsMessage;
+import artifact.lib.utils.ObjectMapperUtils;
 import cartago.INTERNAL_OPERATION;
 import cartago.OPERATION;
 import org.json.JSONObject;
 
+import java.util.Map;
+
 public class TokenMachineArtifact extends AbstractMasElementArtifact {
     private static final String TOKENS = "tokens";
+    private static final String OWNER_PROPERTY = "owner";
+    private static final String INCREMENT_TOKENS_ACTION = "incrementTokens";
+    private static final String DECREMENT_TOKENS_ACTION = "decrementTokens";
+    private static final String PAY_ACTION = "pay";
+    private static final String CLEAR_TOKEN_MACHINE_ACTION = "clearTokenMachine";
     
     @Override
     @OPERATION
@@ -17,44 +24,60 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
         defineObsProperty(TOKENS, 0);
         defineObsProperty("token_price", 2);
         defineObsProperty("type", "tokenMachine");
-        defineObsProperty("owner", "");
+        defineObsProperty(OWNER_PROPERTY, "");
     }
 
     @INTERNAL_OPERATION
     public void clearTokenMachine() {
         writeLog("Clearing token machine");
+        String owner = String.valueOf(getObsProperty(OWNER_PROPERTY).getValue());
+        notifyUnityAction(CLEAR_TOKEN_MACHINE_ACTION, Map.of(OWNER_PROPERTY, owner));
         getObsProperty(TOKENS).updateValue(0);
-        getObsProperty("owner").updateValue("");
+        getObsProperty(OWNER_PROPERTY).updateValue("");
     }
 
     @INTERNAL_OPERATION
     public void incrementTokens(String owner) {
-        getObsProperty("owner").updateValue(owner);
+        getObsProperty(OWNER_PROPERTY).updateValue(owner);
         int tokens = ((Number) getObsProperty(TOKENS).getValue()).intValue();
         tokens++;
         getObsProperty(TOKENS).updateValue(tokens);
         writeLog("Tokens: " + tokens);
+        notifyUnityAction(INCREMENT_TOKENS_ACTION, Map.of(OWNER_PROPERTY, owner, TOKENS, tokens));
     }
 
     @INTERNAL_OPERATION
     public void decrementTokens(String owner) {
-        getObsProperty("owner").updateValue(owner);
+        getObsProperty(OWNER_PROPERTY).updateValue(owner);
         int tokens = ((Number) getObsProperty(TOKENS).getValue()).intValue();
         if (tokens > 0) {
             tokens--;
             getObsProperty(TOKENS).updateValue(tokens);
             writeLog("Tokens: " + tokens);
+            notifyUnityAction(DECREMENT_TOKENS_ACTION, Map.of(OWNER_PROPERTY, owner, TOKENS, tokens));
         }
     }
 
     @INTERNAL_OPERATION
     public void pay(String owner) {
-        getObsProperty("owner").updateValue(owner);
+        getObsProperty(OWNER_PROPERTY).updateValue(owner);
         int tokens = ((Number) getObsProperty(TOKENS).getValue()).intValue();
         execInternalOp("signalAgentsByTick");
         signal(TOKENS, tokens);
         writeLog("Payment successful");
+        // notifyUnityAction(PAY_ACTION, Map.of(OWNER_PROPERTY, owner));
         clearTokenMachine();
+    }
+
+    private void notifyUnityAction(String actionName, Map<String, Object> params) {
+        WsMessage wsMessage = new WsMessage();
+        wsMessage.setMessageType("artifactAction");
+        wsMessage.setMessagePayload("triggered");
+        wsMessage.setAgentEvent(actionName);
+        wsMessage.setAgentName(this.artifactName);
+        wsMessage.setParam(params);
+
+        send(ObjectMapperUtils.convertIntoJsonString(wsMessage));
     }
 
     @Override
@@ -65,17 +88,17 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
             if (msg.has("type")) {
                 String type = msg.getString("type");
                 switch (type) {
-                    case "incrementTokens":
-                        execInternalOp("incrementTokens", "user");
+                    case INCREMENT_TOKENS_ACTION:
+                        execInternalOp(INCREMENT_TOKENS_ACTION, "user");
                         break;
-                    case "decrementTokens":
-                        execInternalOp("decrementTokens", "user");
+                    case DECREMENT_TOKENS_ACTION:
+                        execInternalOp(DECREMENT_TOKENS_ACTION, "user");
                         break;
-                    case "pay":
-                        execInternalOp("pay", "user");
+                    case PAY_ACTION:
+                        execInternalOp(PAY_ACTION, "user");
                         break;
-                    case "clearTokenMachine":
-                        execInternalOp("clearTokenMachine");
+                    case CLEAR_TOKEN_MACHINE_ACTION:
+                        execInternalOp(CLEAR_TOKEN_MACHINE_ACTION);
                         break;
                     default:
                         break;

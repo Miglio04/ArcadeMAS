@@ -107,7 +107,7 @@
 
         Qty = math.floor(1 + math.random((4 - 1) + 1));
         !increment_tokens_times(Qty, ArtifactId);
-        Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
+        Val = math.floor(1 + math.random((3 - 1) + 1)) * 1000;
         .wait(Val);
         pay(Me)[artifact_id(ArtifactId)];
         -+tokens(Qty);
@@ -135,6 +135,7 @@
     : N > 0 & budget(B) & token_price(TokenPrice) & B >= TokenPrice * N
     <- .my_name(Me);
         incrementTokens(Me)[artifact_id(ArtifactId)];
+        .wait(700);
         N1 = N - 1;
         !increment_tokens_times(N1, ArtifactId).
 
@@ -143,6 +144,7 @@
     <- MaxAffordable = math.floor(B / TokenPrice);
         .my_name(Me);
         incrementTokens(Me)[artifact_id(ArtifactId)];
+        .wait(700);
         N1 = N - 1;
         !increment_tokens_times(N1, ArtifactId).
 

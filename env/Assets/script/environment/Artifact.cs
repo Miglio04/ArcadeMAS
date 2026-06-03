@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Video;
 using WebSocketSharp;
@@ -11,6 +12,7 @@ using Unity.VisualScripting;
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using TMPro;
 
 [ExecuteAlways]
 public class Artifact : AbstractArtifact
@@ -24,6 +26,9 @@ public class Artifact : AbstractArtifact
     public Dictionary<string, object> Properties { get; private set; }
 
     private Renderer objectRenderer;
+    private TextMeshProUGUI tokenScreenText;
+    private TextMeshProUGUI priceScreenText;
+    private ArtifactMessage lastArtifactMessage;
 
     private void OnValidate()
     {
@@ -117,7 +122,7 @@ public class Artifact : AbstractArtifact
                         RetrieveGrabbableStatus(message.AgentName);
                         break;
                     case "triggered":
-                        HandleTriggeredEvent(message.AgentEvent);
+                        HandleTriggeredEvent(message);
                         break;
                 }
             });
@@ -161,9 +166,11 @@ public class Artifact : AbstractArtifact
             "grabbableStatus", null, "is_grabbable", artifactName, grabbableStatus));
     }
 
-    private void HandleTriggeredEvent(string agentEvent)
+    private void HandleTriggeredEvent(ArtifactMessage message)
     {
-        switch (agentEvent)
+        lastArtifactMessage = message;
+
+        switch (message.AgentEvent)
         {
             case "playGame":
                 HandlePlayGame();
@@ -184,7 +191,7 @@ public class Artifact : AbstractArtifact
                 HandleClearTokenMachine();
                 break;
             default:
-                Debug.LogWarning($"Unknown agent event: {agentEvent}");
+                Debug.LogWarning($"Unknown agent event: {message.AgentEvent}");
                 break;
         }
     }
@@ -301,19 +308,96 @@ public class Artifact : AbstractArtifact
     private void HandleIncrementTokens()
     {
         Debug.Log($"[{gameObject.name}] Increment tokens triggered");
-        // Implement token increment logic here
+        UpdateTokenMachineDisplayFromMessage();
     }
 
     private void HandleDecrementTokens()
     {
         Debug.Log($"[{gameObject.name}] Decrement tokens triggered");
-        // Implement token decrement logic here
+        UpdateTokenMachineDisplayFromMessage();
     }
 
     private void HandleClearTokenMachine()
     {
         Debug.Log($"[{gameObject.name}] Clear token machine triggered");
-        // Implement token machine clear logic here
+        SetTokenMachineDisplay(0);
+    }
+
+    private void UpdateTokenMachineDisplayFromMessage()
+    {
+        if (TryReadTokenCountFromMessage(out var tokens))
+        {
+            SetTokenMachineDisplay(tokens);
+        }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name}] Token count missing or invalid in artifact message.");
+        }
+    }
+
+    private bool TryReadTokenCountFromMessage(out int tokens)
+    {
+        tokens = 0;
+
+        if (lastArtifactMessage == null || lastArtifactMessage.Param == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var paramObject = lastArtifactMessage.Param as JObject ?? JObject.FromObject(lastArtifactMessage.Param);
+            var tokenValue = paramObject["tokens"];
+
+            if (tokenValue == null)
+            {
+                return false;
+            }
+
+            tokens = tokenValue.Value<int>();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[{gameObject.name}] Failed to read token count from message: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void SetTokenMachineDisplay(int tokens)
+    {
+        EnsureTokenMachineTextReferences();
+
+        if (tokenScreenText != null)
+        {
+            tokenScreenText.text = $"Tokens: {tokens}";
+        }
+
+        if (priceScreenText != null)
+        {
+            priceScreenText.text = $"Price: {(tokens * 2)}";
+        }
+    }
+
+    private void EnsureTokenMachineTextReferences()
+    {
+        if (tokenScreenText == null)
+        {
+            var tokensScreen = FindDeepChild(transform, "TokensScreen");
+            if (tokensScreen != null)
+            {
+                tokenScreenText = tokensScreen.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+        }
+
+        if (priceScreenText == null)
+        {
+            var priceScreen = FindDeepChild(transform, "PriceScreen");
+            if (priceScreen != null)
+            {
+                priceScreenText = priceScreen.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+        }
     }
 
     private void ResolveProperties()
