@@ -65,7 +65,6 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
         execInternalOp("signalAgentsByTick");
         signal(TOKENS, tokens);
         writeLog("Payment successful");
-        // notifyUnityAction(PAY_ACTION, Map.of(OWNER_PROPERTY, owner));
         clearTokenMachine();
     }
 

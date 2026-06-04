@@ -26,9 +26,8 @@ public class Artifact : AbstractArtifact
     public Dictionary<string, object> Properties { get; private set; }
 
     private Renderer objectRenderer;
-    private TextMeshProUGUI tokenScreenText;
-    private TextMeshProUGUI priceScreenText;
-    private ArtifactMessage lastArtifactMessage;
+    // Token/price UI belongs to token-machine subclasses; declared there.
+    protected ArtifactMessage lastArtifactMessage;
 
     private void OnValidate()
     {
@@ -166,127 +165,15 @@ public class Artifact : AbstractArtifact
             "grabbableStatus", null, "is_grabbable", artifactName, grabbableStatus));
     }
 
-    private void HandleTriggeredEvent(ArtifactMessage message)
+    // Subclasses should override to handle specific agent events
+    protected virtual void HandleTriggeredEvent(ArtifactMessage message)
     {
         lastArtifactMessage = message;
-
-        switch (message.AgentEvent)
-        {
-            case "playGame":
-                HandlePlayGame();
-                break;
-            case "stopGame":
-                HandleStopGame();
-                break;
-            case "pay":
-                HandlePayAction();
-                break;
-            case "incrementTokens":
-                HandleIncrementTokens();
-                break;
-            case "decrementTokens":
-                HandleDecrementTokens();
-                break;
-            case "clearTokenMachine":
-                HandleClearTokenMachine();
-                break;
-            default:
-                Debug.LogWarning($"Unknown agent event: {message.AgentEvent}");
-                break;
-        }
+        // Default: no-op. Derived classes implement event-specific logic.
     }
 
-    private void HandlePlayGame()
-    {
-        Transform screenOffChild = FindDeepChild(transform, "ScreenOff");
-        Transform screenPlayChild = FindDeepChild(transform, "ScreenOn");
 
-        if (screenOffChild != null)
-        {
-            screenOffChild.gameObject.SetActive(false);
-            Debug.Log($"[{gameObject.name}] ScreenOff deactivated");
-        }
-        else
-        {
-            Debug.LogWarning($"[{gameObject.name}] ScreenOff child not found");
-        }
-
-        if (screenPlayChild != null)
-        {
-            if (!screenPlayChild.gameObject.activeSelf)
-            {
-                screenPlayChild.gameObject.SetActive(true);
-                Debug.Log($"[{gameObject.name}] ScreenPlay activated");
-            }
-
-            var player = screenPlayChild.GetComponent<VideoPlayer>();
-            if (player == null)
-            {
-                player = screenPlayChild.GetComponentInChildren<VideoPlayer>(true);
-            }
-
-            if (player != null)
-            {
-                if (!player.isPrepared)
-                {
-                    player.Prepare();
-                    Debug.Log($"[{gameObject.name}] Preparing VideoPlayer for playback");
-                }
-
-                player.Play();
-                Debug.Log($"[{gameObject.name}] ScreenPlay video started; isPlaying={player.isPlaying}");
-            }
-            else
-            {
-                Debug.LogWarning($"[{gameObject.name}] VideoPlayer not found on ScreenPlay or its children");
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"[{gameObject.name}] ScreenPlay child not found");
-        }
-    }
-
-    private void HandleStopGame()
-    {
-        Transform screenPlayChild = FindDeepChild(transform, "ScreenOn");
-        Transform screenOffChild = FindDeepChild(transform, "ScreenOff");
-
-        if (screenPlayChild != null)
-        {
-            var player = screenPlayChild.GetComponent<VideoPlayer>();
-            if (player == null)
-            {
-                player = screenPlayChild.GetComponentInChildren<VideoPlayer>(true);
-            }
-
-            if (player != null)
-            {
-                player.Stop();
-                Debug.Log($"[{gameObject.name}] ScreenPlay video stopped; isPlaying={player.isPlaying}");
-            }
-            else
-            {
-                Debug.LogWarning($"[{gameObject.name}] VideoPlayer not found on ScreenPlay or its children");
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"[{gameObject.name}] ScreenPlay child not found");
-        }
-
-        if (screenOffChild != null)
-        {
-            screenOffChild.gameObject.SetActive(true);
-            Debug.Log($"[{gameObject.name}] ScreenOff activated");
-        }
-        else
-        {
-            Debug.LogWarning($"[{gameObject.name}] ScreenOff child not found");
-        }
-    }
-
-    private Transform FindDeepChild(Transform parent, string childName)
+    protected Transform FindDeepChild(Transform parent, string childName)
     {
         foreach (Transform child in parent)
         {
@@ -299,106 +186,7 @@ public class Artifact : AbstractArtifact
         return null;
     }
 
-    private void HandlePayAction()
-    {
-        Debug.Log($"[{gameObject.name}] Pay action triggered");
-        // Implement token machine pay logic here
-    }
-
-    private void HandleIncrementTokens()
-    {
-        Debug.Log($"[{gameObject.name}] Increment tokens triggered");
-        UpdateTokenMachineDisplayFromMessage();
-    }
-
-    private void HandleDecrementTokens()
-    {
-        Debug.Log($"[{gameObject.name}] Decrement tokens triggered");
-        UpdateTokenMachineDisplayFromMessage();
-    }
-
-    private void HandleClearTokenMachine()
-    {
-        Debug.Log($"[{gameObject.name}] Clear token machine triggered");
-        SetTokenMachineDisplay(0);
-    }
-
-    private void UpdateTokenMachineDisplayFromMessage()
-    {
-        if (TryReadTokenCountFromMessage(out var tokens))
-        {
-            SetTokenMachineDisplay(tokens);
-        }
-        else
-        {
-            Debug.LogWarning($"[{gameObject.name}] Token count missing or invalid in artifact message.");
-        }
-    }
-
-    private bool TryReadTokenCountFromMessage(out int tokens)
-    {
-        tokens = 0;
-
-        if (lastArtifactMessage == null || lastArtifactMessage.Param == null)
-        {
-            return false;
-        }
-
-        try
-        {
-            var paramObject = lastArtifactMessage.Param as JObject ?? JObject.FromObject(lastArtifactMessage.Param);
-            var tokenValue = paramObject["tokens"];
-
-            if (tokenValue == null)
-            {
-                return false;
-            }
-
-            tokens = tokenValue.Value<int>();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[{gameObject.name}] Failed to read token count from message: {ex.Message}");
-            return false;
-        }
-    }
-
-    private void SetTokenMachineDisplay(int tokens)
-    {
-        EnsureTokenMachineTextReferences();
-
-        if (tokenScreenText != null)
-        {
-            tokenScreenText.text = $"Tokens: {tokens}";
-        }
-
-        if (priceScreenText != null)
-        {
-            priceScreenText.text = $"Price: {(tokens * 2)}";
-        }
-    }
-
-    private void EnsureTokenMachineTextReferences()
-    {
-        if (tokenScreenText == null)
-        {
-            var tokensScreen = FindDeepChild(transform, "TokensScreen");
-            if (tokensScreen != null)
-            {
-                tokenScreenText = tokensScreen.GetComponentInChildren<TextMeshProUGUI>(true);
-            }
-        }
-
-        if (priceScreenText == null)
-        {
-            var priceScreen = FindDeepChild(transform, "PriceScreen");
-            if (priceScreen != null)
-            {
-                priceScreenText = priceScreen.GetComponentInChildren<TextMeshProUGUI>(true);
-            }
-        }
-    }
+    // Video and token-machine specific behavior moved to subclasses.
 
     private void ResolveProperties()
     {
