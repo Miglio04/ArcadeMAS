@@ -1,0 +1,295 @@
+package chatbdi;
+
+import java.util.List;
+import java.util.logging.Level;
+import java.util.Collection;
+import java.util.Queue;
+import java.util.UUID;
+
+import jason.asSyntax.*;
+import jason.architecture.AgArch;
+import static jason.asSyntax.ASSyntax.*;
+import jason.asSemantics.Agent;
+import jason.asSemantics.Message;
+import jason.infra.local.RunLocalMAS;
+import jason.runtime.Settings;
+import jason.bb.BeliefBase;
+import jason.pl.PlanLibrary;
+
+import jason.asSyntax.parser.ParseException;
+import java.net.ConnectException;
+import java.io.IOException;
+import java.rmi.RemoteException;
+
+/**
+ * Interpreter is an Agent Architecture that enables the user to interact with the agents in the mas
+ * @author Andrea Gatti
+ */
+public class Interpreter extends AgArch {
+
+    /** Supported Illocutionary forces for the classifier */
+    private final String[] SUPPORTED_ILF = { "tell", "askOne", "askAll" };
+
+    /** Ollama manages the connection with the daemon */
+    private LLM llm;
+    /** ChatUI manages the GUI */
+    private ChatUI chatUI;
+    /** EmbeddingSpace manages the embedding space */
+    private EmbeddingSpace embSpace;
+
+    private Tester tester;
+
+    protected void setTester(Tester  tester) {
+        this.tester = tester;
+    }
+
+    /**
+     * Initializes all what is needed for the interpreter:
+     * <ul>
+     * <li> the Ollama client </li>
+     * <li> the embedding space </li>
+     * <li> the chat UI </li>
+     * </ul>
+     */
+    @Override
+    public void init() throws Exception {
+        super.init();
+        logFine( "init: supported ilfs: " + SUPPORTED_ILF );
+        try {
+            Settings stts = getTS().getSettings();
+            llm = new LLM( SUPPORTED_ILF, getAgName(), stts );
+            logInfo( "Initializing LLM models" );
+            embSpace = new EmbeddingSpace(llm);
+            initEmbeddingSpace();
+            logInfo( "Initializing the Embedding Space" );
+            chatUI = new ChatUI( getTS().getLogger(), getAgName() );
+        } catch ( ConnectException ce ) {
+            logSevere( ce.getMessage() );
+            logFine( ce.getStackTrace().toString() );
+        } catch ( RemoteException re ) {
+            logSevere( "REMOTE EXCEPTION! " + re.getMessage() );
+            logFine( re.getStackTrace().toString() );
+        }
+    }
+
+    /**
+     * Interpreter overwrites the checkMail method: 
+     * every message received by the agent triggers a translation to Natural Language and displays it on the chat.
+     */
+    @Override
+    public void checkMail() {
+        super.checkMail();
+
+        Queue<Message> mbox = getTS().getC().getMailBox();
+
+        if ( mbox.isEmpty() )
+            return;
+        
+        while( !mbox.isEmpty() ) {
+            Message m = mbox.poll();
+            new Thread( () -> {
+                String sender = m.getSender();
+                UUID id = chatUI.genUUID();
+                chatUI.showMsg( id, sender );
+                String msg = kqml2nl( m );
+                chatUI.setMsg( id ,msg );
+
+                if (tester != null){
+                    tester.onAgentResponse(msg);
+                }
+
+            }).start();
+        }
+    }
+
+    /**
+     * Translates and send a user message to the agents
+     * @param receivers the list of receiver agents
+     * @param msg the message written on the chat
+     * @throws Exception if broadcast or sendMsg raise it
+     */
+    protected int handleUserMsg( UUID id, List<String> receivers, String msg ) throws Exception, ParseException {
+        // FIX API JASON: Usato getAgentsNames() al plurale
+        Collection<String> agNames = getRuntimeServices().getAgentsNames();
+        logInfo("Starting");
+
+        updateEmbeddingSpace();
+
+        boolean partial = false;
+        if ( !receivers.isEmpty() ) {
+            logInfo("There are receivers" );
+            for ( int i=0; i<receivers.size(); i++ ) {
+                if ( !agNames.contains( receivers.get(i) ) ) {
+                    logInfo("The agent " + receivers.get(i) + " does not exist" );
+                    partial = true;
+                    chatUI.showAgentNotFoundNotice( id, receivers.get(i) );
+                    receivers.remove( receivers.get(i) );
+                }
+            }
+            if ( receivers.isEmpty() ) {
+                logInfo("Receivers is now empty!");
+                return -1;
+            }
+        }
+        // Translates the message into a KQML Message
+        logInfo("Translating the message");
+        Message m = nl2kqml(receivers, msg);
+        
+
+        if ( m == null ) {
+            logInfo( "The generated message is null");
+            return -1;
+        }
+        // show the generated KQML translation under the user's message
+        try {
+            if ( chatUI != null )
+                chatUI.setKQML( id, m.getIlForce(), m.getPropCont().toString() );
+        } catch ( Exception e ) {
+            logSevere( "Cannot show KQML translation: " + e.getMessage() );
+        }
+        // Broadcast if no receivers are set
+        if ( receivers.isEmpty() ) {
+            logInfo("Broadcasting the message");
+            broadcast( m );
+            return 1;
+        }
+        // Send it to all receivers
+        for ( String receiver : receivers ) {
+            if ( agNames.contains( receiver ) ) {
+                m.setReceiver( receiver );
+                sendMsg( m );
+            }
+        }
+        if ( partial )
+            return 0;
+        return 1;
+    }
+
+    /**
+     * Translates a user message into a KQML Message object
+     * @param receivers the list of receiver agents
+     * @param msg the message written on the chat
+     * @return the KQML Message
+     * @throws ParseException if the resulting translation is not syntactically correct
+     * @throws Exception if it fails sending or broadcasting the message
+     */
+    protected Message nl2kqml( List<String> receivers, String msg ) throws Exception, ParseException {
+        // If the message is empty return
+        if ( msg.trim().isEmpty() )
+            return null;
+        // Classify the message
+        Literal ilf = llm.classify( msg );
+        // Generate the final term
+        Literal term = generateTerm( receivers, ilf, msg );
+        // If the computed ilf is an askHow add the triggering +! part to the term
+        if ( ilf.equalsAsStructure( createLiteral( "askHow" ) ) )
+            term = new Trigger( Trigger.TEOperator.add, Trigger.TEType.achieve, term );
+        logInfo( "Generated: \n ilf: " + ilf + "\n term: " + term );
+
+        return new Message( ilf.toString(), this.getAgName(), null, term );
+    }
+
+    /**
+     * This method translates KQML into Natural Language
+     * @param m the KQML Message
+     * @return the translation
+     */
+    protected String kqml2nl( Message m ) {
+        try {
+            return llm.generate( m );
+        } catch ( IOException ioe ) {
+            logSevere( ioe.getMessage() );
+        }
+        return "Error showing the message";
+    }
+
+    /**
+     * Generates the final term to send 
+     * @param receivers who will receive the message: we will use their BB and PL for translation
+     * @param ilf the Illocutionary Force classified
+     * @param msg the message sent by the user
+     * @return the term generated from the message
+     * @throws ParseException if the generated term is not syntactically correct
+     */
+    private Literal generateTerm( List<String> receivers, Literal ilf, String msg ) throws ParseException {
+        msg = msg.replaceAll( "\\s*@\\S+", "" );
+        String subSpace = "terms";
+        if ( ilf.equals( "achieve" ) )
+            subSpace = "plans";
+        Literal nearest = embSpace.findNearest( receivers, subSpace, msg );
+        try {
+            System.out.println( "[LOG] " + nearest );
+            List<Literal> examples = embSpace.getExamples( ilf, nearest );
+            return llm.generate( msg, nearest, ilf, examples );
+        } catch( IOException ioe ) {
+            throw new IllegalArgumentException( "Prompt loading caused a IO Exception: check the file path. Full error: " + ioe.getMessage() );
+        }
+    }
+
+    /**
+     * Inititalizes the embedding space
+     * @throws RemoteException if the agent fails accessing BB or PL of another agent
+     */
+    private void initEmbeddingSpace() throws RemoteException {
+        logInfo( "Initializing content of the Embedding Space" );
+        // FIX API JASON: Usato getAgentsNames() al plurale
+        Collection<String> agNames = getRuntimeServices().getAgentsNames();
+        for ( String agName : agNames ) {
+            logInfo( "Considering " + agName );
+            Agent ag = RunLocalMAS.getRunner().getAg( agName ).getTS().getAg();
+            BeliefBase bb = ag.getBB().clone();
+            PlanLibrary pl = ag.getPL().clone();
+            embSpace.update( agName, bb, pl );
+        }
+        embSpace.print();
+    }
+
+    private void updateEmbeddingSpace() throws RemoteException {
+        logInfo( "Updating content of the Embedding Space" );
+        // FIX API JASON: Usato getAgentsNames() al plurale
+        Collection<String> agNames = getRuntimeServices().getAgentsNames();
+        for ( String agName : agNames ) {
+            logInfo( "Considering " + agName );
+            Agent ag = RunLocalMAS.getRunner().getAg( agName ).getTS().getAg();
+            BeliefBase bb = ag.getBB().clone();
+            PlanLibrary pl = ag.getPL().clone();
+            embSpace.update( agName, bb, pl );
+        }
+    }
+
+
+    /** Prints ERROR on the agent log
+     * @param msg what to print
+     */
+    protected void logSevere( String msg ) {
+        getTS().getLogger().log( Level.SEVERE, msg );
+    }
+
+    protected void logWarning( String msg ) {
+        getTS().getLogger().log( Level.WARNING, msg );
+    }
+
+    /** Prints INFO on the agent log 
+     * @param msg what to print
+    */
+    protected void logInfo( String msg ) {
+        getTS().getLogger().log( Level.INFO, msg );
+    }
+
+    protected void logConfig( String msg ) {
+        getTS().getLogger().log( Level.CONFIG, msg );
+    }
+
+    protected void logFine( String msg ) {
+        getTS().getLogger().log( Level.FINE, msg );
+    }
+
+    protected void logFiner( String msg ) {
+        getTS().getLogger().log( Level.FINER, msg );
+    }
+
+    protected void logFinest( String msg ) {
+        getTS().getLogger().log( Level.FINEST, msg );
+    }
+
+}

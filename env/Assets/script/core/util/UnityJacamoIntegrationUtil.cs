@@ -37,12 +37,34 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 		var masName = ExtractMasName(jcmContent);
 		var workspaceContent = ConfigureEnvironmentArtifacts(envArtifacts, jcmContent, out var workspaceName);
 		var agentsContent = GenerateAgentsContent(avatars, workspaceName);
+		string userJcmContent = @"	agent user : conversation.asl {
+			ag-arch: chatbdi.Interpreter
+
+			// Percorsi allineati con la tua struttura directory attuale
+			nl2log_prompt : ""src/agt/chatbdi/modelfiles/nl2logPrompt.txt""
+			log2nl_prompt : ""src/agt/chatbdi/modelfiles/log2nlPrompt.txt""
+			nl2log_model  : ""src/agt/chatbdi/modelfiles/nl2log.txt""
+			log2nl_model  : ""src/agt/chatbdi/modelfiles/log2nl.txt""
+			class_model   : ""src/agt/chatbdi/modelfiles/classifier.txt""
+
+			// PARAMETRI DI GENERAZIONE GROQ (Usa provider openai per compatibilità)
+			gen_provider  : ""openai""
+			gen_model     : ""llama-3.3-70b-versatile""
+			gen_key       : """"
+			gen_url       : ""https://api.groq.com/openai/v1/""
+
+			// PARAMETRI EMBEDDING LOCALE (Ollama)
+			emb_provider  : ""ollama""
+			emb_model     : ""all-minilm""
+			emb_url       : ""http://localhost:11434/api/""
+		}";
+
 
 		if (File.Exists(_jcmFilePath))
 			File.Delete(_jcmFilePath);
 
 		// Create the new JCM file content
-		var newJcmContent = $"mas {masName} {{\n{agentsContent}\t{workspaceContent}}}\n";
+		var newJcmContent = $"mas {masName} {{\n{agentsContent}{userJcmContent}\n\n\t{workspaceContent}}}\n";
 		// Write the new content to the JCM file
 		File.WriteAllText(_jcmFilePath, newJcmContent);
 
@@ -277,6 +299,11 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 			
 			case "grabbableStatus":
 				wsMsg = new BrainMessage( "body", agentName, "grabbable_status", (bool) param );
+				break;
+
+			case "userInteraction":
+				InteractionData interactionData = new InteractionData( (string) param );
+				wsMsg = new BrainMessage( "body", agentName, "user_interaction", interactionData );
 				break;
 
 			default:

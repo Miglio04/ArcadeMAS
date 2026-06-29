@@ -138,12 +138,20 @@ public class VesnaAgent extends Agent{
         }
     }
 
-    private void handle_arts( JSONObject data ) {
-        JSONArray art_names = data.getJSONArray( "names" );
+    private void handle_arts(JSONObject data) {
+        JSONArray art_names = data.getJSONArray("names");
         try {
-            Literal percept = parseLiteral( "art_names(" + art_names.toString() + ")");
-            sense( percept );
-        } catch ( Exception e ) {
+            Literal percept = parseLiteral("art_names(" + art_names.toString() + ")");
+            sense(percept);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private void handle_user_interaction(JSONObject data) {
+        try {
+            addBel( parseLiteral( "user_interaction" ) );
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -162,7 +170,8 @@ public class VesnaAgent extends Agent{
             case "sight" -> handle_sight( data );
             case "movement" -> handle_movement( data );
             case "door" -> handle_door( data );
-            case "artifactStrategy" -> handle_arts( data );
+            case "artifactStrategy" -> handle_arts(data);
+            case "user_interaction" -> handle_user_interaction(data);
             default -> System.out.println( "Unknown message type: " + type );
         }
     }

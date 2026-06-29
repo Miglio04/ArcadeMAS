@@ -9,7 +9,7 @@ defaultTasks 'run'
 
 apply plugin: 'java'
 apply plugin: 'maven-publish'
-// // apply from: '.jcm-deps.gradle' // this file contains dependencies declared in the .jcm files
+// apply from: '.jcm-deps.gradle' // this file contains dependencies declared in the .jcm files
 
 version '1.0'
 group   'org.jacamo'
@@ -23,15 +23,9 @@ java {
 repositories {
     maven { url "https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master" }
     maven { url "https://repo.gradle.org/gradle/libs-releases" }
-
-    //maven { url "http://jacamo.sourceforge.net/maven2" }
-    //maven { url "https://jade.tilab.com/maven/" }
-
     flatDir { dirs 'lib' }
-
     mavenCentral()
     maven { url "https://jitpack.io" }
-
 }
 
 dependencies {
@@ -48,15 +42,21 @@ dependencies {
     testCompileOnly('org.projectlombok:lombok:1.18.34')
     testAnnotationProcessor('org.projectlombok:lombok:1.18.34')
 
-    // https://mvnrepository.com/artifact/org.json/json
-    implementation("org.json:json:20230227") // Vulnerability! 20231013 would be better!
+    // Json - Versione sicura aggiornata
+    implementation("org.json:json:20231013") 
 
     // Apache Commons
-    implementation('org.apache.commons:commons-lang3:3.18.0') // Potentially useless!
-    implementation('org.apache.commons:commons-text:1.11.0') // Used for unescaping strings!
+    implementation('org.apache.commons:commons-lang3:3.18.0') 
+    implementation('org.apache.commons:commons-text:1.11.0') 
 
     implementation ('com.fasterxml.jackson.core:jackson-core:2.15.2')
     implementation ('com.fasterxml.jackson.core:jackson-databind:2.15.2')
+
+    // --- DIPENDENZE PER CHATBDI ---
+    // FlatLaf: Look and Feel moderno per la GUI (risolve bug grafici)
+    implementation('com.formdev:flatlaf:3.4.1')
+    // txtmark: Processore Markdown per la formattazione dei messaggi chat
+    implementation('com.github.rjeschke:txtmark:0.13')
 }
 
 sourceSets {
@@ -83,7 +83,10 @@ task run (type: JavaExec, dependsOn: 'classes') {
     
     mainClass = 'jacamo.infra.JaCaMoLauncher'
     args 'arcade.jcm'
-    // jvmArgs '-Xss15m'
+    
+    // FIX BUG GRAFICO MAC: Forza l'uso del tema Metal per evitare i NullPointerException
+    jvmArgs '-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel'
+    
     classpath sourceSets.main.runtimeClasspath
 }
 
@@ -95,9 +98,7 @@ task buildJCMDeps (type: JavaExec, dependsOn: 'classes') {
 
 jar {
     duplicatesStrategy 'exclude'
-
     archiveBaseName = project.name
-
     from (project.projectDir.absolutePath + '/src') {
         include '**/*.asl'
         include '**/*.xml'
@@ -119,7 +120,6 @@ publishing {
     }
 }
 
-
 task uberJar(type: Jar, dependsOn: 'classes') {
     group      ' JaCaMo'
     description 'creates a single runnable jar file with all dependencies'
@@ -128,8 +128,7 @@ task uberJar(type: Jar, dependsOn: 'classes') {
     manifest {
         attributes 'Main-Class': 'jacamo.infra.JaCaMoLauncher'
     }
-    archiveBaseName = 'jacamo-supermarket' // the name must start with jacamo so that jacamo...jar is found in the classpath
-    //from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    archiveBaseName = 'jacamo-supermarket' 
     from { configurations.runtimeClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) } }
 
     from (project.projectDir.absolutePath) {
@@ -154,75 +153,8 @@ task uberJar(type: Jar, dependsOn: 'classes') {
     }
 }
 
-
-// task testJaCaMo {
-//     description 'runs JaCaMo unit tests'
-//     def errorOnTests = false
-//     outputs.upToDateWhen { false } // disable cache
-// 
-//     doFirst {
-//         try {
-//             javaexec {
-//                 mainClass = 'jacamo.infra.JaCaMoLauncher'
-//                 if (gradle.startParameter.logLevel.toString().equals("DEBUG")) {
-//                     args = ['src/test/tests.jcm', '--log-conf', '$jason/templates/console-debug-logging.properties']
-//                 } else if (gradle.startParameter.logLevel.toString().equals("INFO")) {
-//                     args = ['src/test/tests.jcm', '--log-conf', '$jason/templates/console-info-logging.properties']
-//                 } else {
-//                     args = ['src/test/tests.jcm', '--log-conf', '$jason/templates/console-lifecycle-logging.properties']
-//                 }
-//                 classpath sourceSets.main.runtimeClasspath
-// 
-//                 errorOutput = new ByteArrayOutputStream()
-//                 standardOutput = new ByteArrayOutputStream()
-// 
-//                 ext.stdout = {
-//                     return standardOutput.toString()
-//                 }
-//                 ext.errout = {
-//                     return errorOutput.toString()
-//                 }
-//             }
-//         } catch (Exception e) {
-//             errorOnTests = true
-//         }
-//     }
-// 
-//     doLast {
-//         def styler = 'black red green yellow blue magenta cyan white'
-//             .split().toList().withIndex(30)
-//             .collectEntries { key, val -> [(key) : { "\033[${val}m${it}\033[0m" }] }
-// 
-//         def std = stdout()
-//         std.splitEachLine('\n') { String line ->
-//             line = line.replace("TESTING","${styler['yellow']('TESTING')}")
-//             line = line.replace("PASSED","${styler['green']('PASSED')}")
-//             line = line.replace("FAILED","${styler['red']('FAILED')}")
-//             line = line.replace("TODO","${styler['magenta']('TODO')}")
-//             line = line.replace("LAUNCHING","${styler['blue']('LAUNCHING')}")
-//             println line
-//         }
-// 
-//         def err = errout()
-//         err.splitEachLine('\n') { String line ->
-//             line = line.replace("TESTING","${styler['yellow']('TESTING')}")
-//             line = line.replace("PASSED","${styler['green']('PASSED')}")
-//             line = line.replace("FAILED","${styler['red']('FAILED')}")
-//             line = line.replace("TODO","${styler['magenta']('TODO')}")
-//             line = line.replace("LAUNCHING","${styler['blue']('LAUNCHING')}")
-//             println line
-//         }
-// 
-//         if (errorOnTests) {
-//             throw new GradleException('JaCaMo unit tests: ERROR!')
-//         }
-//     }
-// }
-// tasks.test.finalizedBy testJaCaMo
-
 clean {
     delete 'bin'
     delete 'build'
     delete 'log'
 }
-

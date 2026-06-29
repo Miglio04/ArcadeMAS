@@ -24,5 +24,14 @@ public class PlayerAvatarScript : AgentAvatarSocial
             autonomousWalking.Waypoints = waypoints;
     }
 
+    public void handleUserInteraction(){
+        var jacamoJsonString = UnityJacamoIntegrationUtil
+            .CreateAndConvertJacamoMessageIntoJsonString("userInteraction", null, null, "player", "user");
+        
+        Debug.Log("Sending user interaction message to JaCaMo brain: " + jacamoJsonString);
+        
+        SendMessageToJaCaMoBrain(jacamoJsonString);
+    }
+
     public override AgentBeliefs AgentBeliefs => playerBeliefs;
 }

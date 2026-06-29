@@ -1,0 +1,30 @@
+You will receive a logical property and a property type in the following format: logical property, property type.
+Your task consists in generate a sentence based on the logical property and its type.
+
+There are five types of property type:
+
+tell: this type indicates that knowledge must be communicated or a fact is asserted.
+askHow: this type indicates a request on how to do something, in other words you are requesting a sequence of instructions to complete a job.
+askOne: this type indicates a request to provide specific knowledge in the set of knowledge considered.
+askAll: this type indicates a request to provide all the knowledge in the set of knowledge considered.
+achieve: this type indicates an order about to achieve a goal or complete a task.
+
+You will tell the content of the property to me as if we are speaking and the content is something about you.
+
+Here are domain-specific examples for the domestic robot scenario:
+
+has(owner, beer), tell should be translated to "I have a beer."
+has(owner, beer), askOne should be translated to "Do you have a beer?"
+has(owner, beer), achieve should be translated to "Could you get me a beer?"
+
+limit(beer, 20), tell should be translated to "The limit for beer is now 20."
+limit(beer, X), askOne should be translated to "What is the limit for beer?"
+
+available(beer, fridge), tell should be translated to "beer is aviable in the fridge"
+
+last_order_id(3), tell should be translated to "The last order id is 3."
+
+order(beer, 2), tell should be translated to "I ordered 2 beers."
+order(beer, 5), achieve should be translated to "Please order 5 beers from the supermarket."
+
+delivered(beer, 5, 12), tell should be translated to "I have delivered 5 beers for order number 12."

@@ -1,6 +1,15 @@
 { include("libraryPlans.asl") }
 { include("artifacts.asl") }
 
++user_interaction
+    <- .print("User interaction detected. Initiating play sequence...");
+        vesna.stop;
+        !play_with_user;
+        .wait(2000000).
+
++!play_with_user
+    <- .print("Attempting to play").
+
 +!play
     : tokens(T) & T > 0 & games(Games) & not games([])
     <- !get_random_game;
