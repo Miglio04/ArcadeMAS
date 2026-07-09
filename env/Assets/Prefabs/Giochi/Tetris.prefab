@@ -221,31 +221,7 @@ MonoBehaviour:
   m_SelectEntered:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 4917910537554670209}
-        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
-        m_MethodName: SetActive
-        m_Mode: 6
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-      - m_Target: {fileID: 2247445993683184232}
-        m_TargetAssemblyTypeName: UnityEngine.Video.VideoPlayer, UnityEngine
-        m_MethodName: Play
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-      - m_Target: {fileID: 6658248710900688418}
+      - m_Target: {fileID: 2338224452250567658}
         m_TargetAssemblyTypeName: Artifact, Assembly-CSharp
         m_MethodName: ExecutePrimaryAction
         m_Mode: 1
@@ -385,31 +361,7 @@ MonoBehaviour:
   m_SelectEntered:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 4917910537554670209}
-        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
-        m_MethodName: SetActive
-        m_Mode: 6
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 1
-        m_CallState: 2
-      - m_Target: {fileID: 2247445993683184232}
-        m_TargetAssemblyTypeName: UnityEngine.Video.VideoPlayer, UnityEngine
-        m_MethodName: Stop
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-      - m_Target: {fileID: 6658248710900688418}
+      - m_Target: {fileID: 2338224452250567658}
         m_TargetAssemblyTypeName: Artifact, Assembly-CSharp
         m_MethodName: ExecuteSecondaryAction
         m_Mode: 1
@@ -457,6 +409,7 @@ GameObject:
   - component: {fileID: 3557883427021765484}
   - component: {fileID: 5975116377948809429}
   - component: {fileID: 2247445993683184232}
+  - component: {fileID: 8215488152144472204}
   m_Layer: 6
   m_Name: ScreenOn
   m_TagString: Untagged
@@ -553,9 +506,9 @@ VideoPlayer:
   m_DataSource: 0
   m_TimeUpdateMode: 2
   m_PlaybackSpeed: 1
-  m_AudioOutputMode: 2
+  m_AudioOutputMode: 1
   m_TargetAudioSources:
-  - {fileID: 0}
+  - {fileID: 8215488152144472204}
   m_DirectAudioVolumes:
   - 1
   m_Url: 
@@ -568,6 +521,103 @@ VideoPlayer:
   m_WaitForFirstFrame: 1
   m_FrameReadyEventEnabled: 0
   m_VideoShaders: []
+--- !u!82 &8215488152144472204
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8054925040274891282}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 0
+  m_Volume: 0.4
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1001 &7634433327472096318
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -656,10 +706,10 @@ PrefabInstance:
       addedObject: {fileID: 4016357364209753148}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 900f22632953b48b099eb149ac8c2a95, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 6658248710900688418}
+      addedObject: {fileID: 7985125990829837477}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 900f22632953b48b099eb149ac8c2a95, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 7985125990829837477}
+      addedObject: {fileID: 2338224452250567658}
   m_SourcePrefab: {fileID: 100100000, guid: 900f22632953b48b099eb149ac8c2a95, type: 3}
 --- !u!1 &7292345362334714223 stripped
 GameObject:
@@ -687,25 +737,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.81198096, y: 1.79, z: 0.65000015}
   m_Center: {x: -0.0059903874, y: 0, z: 0.00000047683716}
---- !u!114 &6658248710900688418
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7292345362334714223}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 12c21f47da35c264e9927393759c63f5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  objInUse: {fileID: 7292345362334714223}
-  port: 5300
-  artifactType: 11
-  isGrabbable: 0
-  primaryActionToTrigger: playGame
-  secondaryActionToTrigger: stopGame
-  tertiaryActionToTrigger: None
 --- !u!54 &7985125990829837477
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -733,6 +764,25 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &2338224452250567658
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7292345362334714223}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8236f070a350046d4bd9f0360ae608bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  objInUse: {fileID: 7292345362334714223}
+  port: 5300
+  artifactType: 11
+  isGrabbable: 0
+  primaryActionToTrigger: playGame
+  secondaryActionToTrigger: stopGame
+  tertiaryActionToTrigger: None
 --- !u!4 &7960197918330049493 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 900f22632953b48b099eb149ac8c2a95, type: 3}

@@ -26,17 +26,19 @@
         .my_name(Me);
         if ( not owner("")[artifact_id(ArtifactId)] & not owner(Me)[artifact_id(ArtifactId)] ) {
             .print("The artifact ", NormalizedName, " is occupied. Waiting for it to become available...");
-            .wait( owner("")[artifact_id(ArtifactId)] );
+            requestAccess(Me);
+            .wait( access_granted_ready(NormalizedName) );
+            -access_granted_ready(NormalizedName);
             .print("The artifact is now available! Proceeding.");
             .wait(1000);
         }
         // Fine blocco test owner
 
         playGame(Me)[artifact_id(ArtifactId)];
+        -+tokens(T-1);
         Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
         .wait(Val);
         stopGame(Me)[artifact_id(ArtifactId)];
-        -+tokens(T-1);
         stopFocus(ArtifactId);
         -chosenGame(Game);
         -movement_in_progress(_);
@@ -63,17 +65,19 @@
         .my_name(Me);
         if ( not owner("")[artifact_id(ArtifactId)] & not owner(Me)[artifact_id(ArtifactId)] ) {
             .print("The artifact ", NormalizedName, " is occupied. Waiting for it to become available...");
-            .wait( owner("")[artifact_id(ArtifactId)] );
+            requestAccess(Me);
+            .wait( access_granted_ready(NormalizedName) );
+            -access_granted_ready(NormalizedName);
             .print("The artifact is now available! Proceeding.");
             .wait(1000);
         }
         // Fine blocco test owner
 
         playGame(Me)[artifact_id(ArtifactId)];
+        -+tokens(T-1);
         Val = math.floor(2 + math.random((5 - 2) + 1)) * 1000;
         .wait(Val);
         stopGame(Me)[artifact_id(ArtifactId)];
-        -+tokens(T-1);
         stopFocus(ArtifactId);
         -chosenGame(Game);
         -movement_in_progress(_);
@@ -108,7 +112,9 @@
         .my_name(Me);
         if ( not owner("")[artifact_id(ArtifactId)] & not owner(Me)[artifact_id(ArtifactId)] ) {
             .print("The artifact ", NormalizedName, " is occupied. Waiting for it to become available...");
-            .wait( owner("")[artifact_id(ArtifactId)] );
+            requestAccess(Me);
+            .wait( access_granted_ready(NormalizedName) );
+            -access_granted_ready(NormalizedName);
             .print("The artifact is now available! Proceeding.");
             .wait(1000);
         }
@@ -126,6 +132,9 @@
         stopFocus(ArtifactId);
         -movement_in_progress(_);
         !play.
+
++access_granted(ArtifactName)
+    <- +access_granted_ready(ArtifactName).
 
 +!buy_tokens
     : budget(B) & token_price(TokenPrice) & B < TokenPrice
@@ -149,12 +158,12 @@
         !increment_tokens_times(N1, ArtifactId).
 
 +!increment_tokens_times(N, ArtifactId)
-    : N > 0 & (budget(B) & token_price(TokenPrice) & B < TokenPrice * N)
+    : N > 0 & budget(B) & token_price(TokenPrice) & B < TokenPrice * N
     <- MaxAffordable = math.floor(B / TokenPrice);
         .my_name(Me);
         incrementTokens(Me)[artifact_id(ArtifactId)];
         .wait(700);
-        N1 = N - 1;
+        N1 = MaxAffordable - 1;
         !increment_tokens_times(N1, ArtifactId).
 
 { include("$jacamo/templates/common-cartago.asl") }

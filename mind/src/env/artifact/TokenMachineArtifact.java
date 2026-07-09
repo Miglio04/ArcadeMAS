@@ -7,6 +7,7 @@ import cartago.INTERNAL_OPERATION;
 import cartago.OPERATION;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 public class TokenMachineArtifact extends AbstractMasElementArtifact {
@@ -16,6 +17,8 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
     private static final String DECREMENT_TOKENS_ACTION = "decrementTokens";
     private static final String PAY_ACTION = "pay";
     private static final String CLEAR_TOKEN_MACHINE_ACTION = "clearTokenMachine";
+    private static final String ACCESS_GRANTED_ACTION = "access_granted";
+    private static final ArrayList<String> waitList = new ArrayList<>();
     
     @Override
     @OPERATION
@@ -28,12 +31,33 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
     }
 
     @INTERNAL_OPERATION
+    public void requestAccess(String agentName) {
+        String currentOwner = String.valueOf(getObsProperty(OWNER_PROPERTY).getValue());
+        writeLog("requestAccess called by " + agentName + ", current owner=" + currentOwner + ", waitList=" + waitList);
+        if (!waitList.contains(agentName)) {
+            waitList.add(agentName);
+            writeLog("Wait list after add: " + waitList);
+        } else {
+            writeLog("Agent already present in wait list: " + waitList);
+        }
+    }
+
+    @INTERNAL_OPERATION
     public void clearTokenMachine() {
         writeLog("Clearing token machine");
         String owner = String.valueOf(getObsProperty(OWNER_PROPERTY).getValue());
+        writeLog("clearTokenMachine owner before clear=" + owner + ", waitList=" + waitList);
         notifyUnityAction(CLEAR_TOKEN_MACHINE_ACTION, Map.of(OWNER_PROPERTY, owner));
         getObsProperty(TOKENS).updateValue(0);
-        getObsProperty(OWNER_PROPERTY).updateValue("");
+        if (waitList.isEmpty()) {
+            getObsProperty(OWNER_PROPERTY).updateValue("");
+            writeLog("No agents waiting, owner cleared");
+        } else {
+            String nextAgent = waitList.remove(0);
+            getObsProperty(OWNER_PROPERTY).updateValue(nextAgent);
+            signalAgent(nextAgent, ACCESS_GRANTED_ACTION, normalizedArtifactName());
+            writeLog("Granted access to " + nextAgent + ", remaining queue=" + waitList);
+        }
     }
 
     @INTERNAL_OPERATION
@@ -77,6 +101,14 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
         wsMessage.setParam(params);
 
         send(ObjectMapperUtils.convertIntoJsonString(wsMessage));
+    }
+
+    private String normalizedArtifactName() {
+        if (artifactName == null || artifactName.isEmpty()) {
+            return artifactName;
+        }
+
+        return Character.toLowerCase(artifactName.charAt(0)) + artifactName.substring(1);
     }
 
     @Override
