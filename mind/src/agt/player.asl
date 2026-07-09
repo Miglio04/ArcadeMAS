@@ -87,6 +87,9 @@
     : tokens(T) & T == 0
     <- !buy_tokens.
 
++access_granted(ArtifactName)
+    <- +access_granted_ready(ArtifactName).
+
 +!get_random_game
     : games(Games) & not games([])
     <- .shuffle(Games, ShuffledGames);
@@ -121,20 +124,23 @@
         // Fine blocco test owner
 
         Qty = math.floor(1 + math.random((4 - 1) + 1));
-        !increment_tokens_times(Qty, ArtifactId);
+        MaxAffordable = math.floor(B / TokenPrice);
+        if (Qty > MaxAffordable) {
+            PurchasedQty = MaxAffordable;
+        } else {
+            PurchasedQty = Qty;
+        }
+        !increment_tokens_times(PurchasedQty, ArtifactId);
         Val = math.floor(1 + math.random((3 - 1) + 1)) * 1000;
         .wait(Val);
         pay(Me)[artifact_id(ArtifactId)];
-        -+tokens(Qty);
-        TotalCost = Qty * TokenPrice;
+        -+tokens(PurchasedQty);
+        TotalCost = PurchasedQty * TokenPrice;
         -+budget(B - TotalCost);
-        .print("Tokens purchased successfully! Bought ", Qty, " tokens.");
+        .print("Tokens purchased successfully! Bought ", PurchasedQty, " tokens.");
         stopFocus(ArtifactId);
         -movement_in_progress(_);
         !play.
-
-+access_granted(ArtifactName)
-    <- +access_granted_ready(ArtifactName).
 
 +!buy_tokens
     : budget(B) & token_price(TokenPrice) & B < TokenPrice
@@ -155,15 +161,6 @@
         incrementTokens(Me)[artifact_id(ArtifactId)];
         .wait(700);
         N1 = N - 1;
-        !increment_tokens_times(N1, ArtifactId).
-
-+!increment_tokens_times(N, ArtifactId)
-    : N > 0 & budget(B) & token_price(TokenPrice) & B < TokenPrice * N
-    <- MaxAffordable = math.floor(B / TokenPrice);
-        .my_name(Me);
-        incrementTokens(Me)[artifact_id(ArtifactId)];
-        .wait(700);
-        N1 = MaxAffordable - 1;
         !increment_tokens_times(N1, ArtifactId).
 
 { include("$jacamo/templates/common-cartago.asl") }
