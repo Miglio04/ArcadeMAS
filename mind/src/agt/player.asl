@@ -1,6 +1,8 @@
 { include("libraryPlans.asl") }
 { include("artifacts.asl") }
 
+/* --- Working Progress on user interaction --- */
+
 +user_interaction
     <- .print("User interaction detected. Initiating play sequence...");
         vesna.stop;
@@ -9,6 +11,8 @@
 
 +!play_with_user
     <- .print("Attempting to play").
+
+/* --- Play Logic --- */
 
 +!play
     : tokens(T) & T > 0 & games(Games) & not games([])
@@ -87,14 +91,7 @@
     : tokens(T) & T == 0
     <- !buy_tokens.
 
-+access_granted(ArtifactName)
-    <- +access_granted_ready(ArtifactName).
-
-+!get_random_game
-    : games(Games) & not games([])
-    <- .shuffle(Games, ShuffledGames);
-        .nth(0, ShuffledGames, Game);
-        +chosenGame(Game).
+/* --- Buy Tokens Logic --- */
 
 +!buy_tokens
     : budget(B) & token_price(TokenPrice) & B >= TokenPrice
@@ -152,6 +149,8 @@
         stopFocus(ArtId);
         !reach_dest(Door).
 
+/* --- Auxiliary plans --- */
+
 +!increment_tokens_times(0, ArtifactId)
     <- true.
 
@@ -162,6 +161,15 @@
         .wait(700);
         N1 = N - 1;
         !increment_tokens_times(N1, ArtifactId).
+
++access_granted(ArtifactName)
+    <- +access_granted_ready(ArtifactName).
+
++!get_random_game
+    : games(Games) & not games([])
+    <- .shuffle(Games, ShuffledGames);
+        .nth(0, ShuffledGames, Game);
+        +chosenGame(Game).
 
 { include("$jacamo/templates/common-cartago.asl") }
 { include("$jacamo/templates/common-moise.asl") }
