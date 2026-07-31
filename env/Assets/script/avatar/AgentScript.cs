@@ -22,7 +22,7 @@ public class AgentScript : MonoBehaviour
     private bool imObserved;
     private bool inConversation;
     private bool imWaithingForResponse;
-    private string messageToSend; // Variabile per memorizzare il messaggio da inviare al BDI
+    private string messageToSend = ""; // Variabile per memorizzare il messaggio da inviare al BDI
     
     // Testo di base, reso readonly perché non cambia
     private readonly string startingText = "Hello, I am listening!"; 
@@ -107,29 +107,21 @@ public class AgentScript : MonoBehaviour
     #region Conversation Logic (Called by VRGazeInteraction)
     public void call()
     {
-        if (imObserved || !inConversation)
+        inConversation = true;
+        Debug.Log("Agent activated: " + gameObject.name);
+
+        if (myRenderer != null)
         {
-            inConversation = true;
-            Debug.Log("Agent activated: " + gameObject.name);
-            
-            if (myRenderer != null)
-            {
-                myRenderer.material.color = Color.green;
-            }
-            
-            if (canvas != null && textComponent != null)
-            {
-                canvas.enabled = true;
-                if (imWaithingForResponse)
-                {
-                    textComponent.text = "still thinking...";
-                }
-            }
-        } 
-        else
+            myRenderer.material.color = Color.green; // Colore di conversazione attiva
+        }
+
+        if (canvas != null && textComponent != null)
         {
-            Debug.Log("Agent called but not currently observed");   
-        }    
+            canvas.enabled = true;
+            // All'inizio della conversazione, il testo di partenza è sempre lo stesso.
+            // Se si sta aspettando una risposta, il testo verrà aggiornato da un'altra funzione.
+            textComponent.text = imWaithingForResponse ? "still thinking..." : startingText;
+        }
     }
 
     public void endCall()
@@ -144,22 +136,16 @@ public class AgentScript : MonoBehaviour
 
     public void updateText(string text)
     {
-        // Evitiamo crash se il testo non esiste
-        if(inConversation && !imWaithingForResponse && textComponent != null)
+        if (inConversation && !imWaithingForResponse && textComponent != null)
         {
-            messageToSend += text + " "; // Aggiorna il messaggio da inviare al BDI
-            textComponent.text = "you said: " + messageToSend;
+            messageToSend = text; // sostituisce, non accumula
+            textComponent.text = "you said: " + messageToSend.Trim();
         }
     }
 
     public void sendToBDI()
     {
-        if(messageToSend == null)
-        {
-            Debug.Log("No message to send to BDI");
-            return;
-        }
-        if (messageToSend.Trim() == "")
+        if (string.IsNullOrWhiteSpace(messageToSend))
         {
             Debug.Log("Empty message, not sending to BDI");
             return;
@@ -190,7 +176,7 @@ public class AgentScript : MonoBehaviour
         messageToSend = ""; // Resetta il messaggio da inviare al BDI
         if (textComponent != null)
         {
-            textComponent.text = "you said: "; // Resetta il testo visualizzato
+            textComponent.text = startingText; // Resetta il testo visualizzato a quello iniziale
         }
     }
     #endregion
