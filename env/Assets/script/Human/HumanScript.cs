@@ -1,387 +1,177 @@
-// //using Oculus.Voice;
-// using UnityEditor.Experimental;
-// using UnityEngine;
-// using UnityEngine.InputSystem;
+using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit;
+using Oculus.Voice;
+#if PLATFORM_ANDROID
+using UnityEngine.Android;
+#endif
 
-// public class HumanScript : MonoBehaviour
-// {
-//     #region Settings & References
-//     [Header("VR Settings")]
-//     [Tooltip("Drag the Main Camera of your VR headset here")]
-//     public Transform vrHeadset;
+public class VRGazeInteraction : MonoBehaviour
+{
+    [Header("Voice SDK")]
+    public AppVoiceExperience appVoiceExperience;
 
-//     [Tooltip("Maximum distance to activate the agent")]
-//     public float gazeDistance = 5f;
+    #region Internal State Variables
+    private AgentScript talkingAgentScript;
+    private bool imInConversation;
 
-//     [Header("Input Actions")]
-//     [Tooltip("Input Action for the trigger click")]
-//     public InputActionReference triggerAction;
-//     [Tooltip("Input Action for the secondary trigger click")]
-//     public InputActionReference secondaryTriggerAction;
+    private string[] deactivationWords = { "goodbye", "bye", "see you", "farewell", "later" };
+    private string[] cancelRequestWords = { "cancel", "stop", "nevermind", "forget it", "that's wrong", "wrong", "i didn't mean that" };
+    #endregion
 
-//     [Header("Voice SDK")]
-//     //public AppVoiceExperience appVoiceExperience;
-//     #endregion
+    void Start()
+    {
+        imInConversation = false;
 
-//     #region Internal State Variables
-//     private int agentLayerIndex; // Ottimizzato: indice intero invece di chiamare NameToLayer ogni frame
-//     private int artifactLayerIndex;
-//     private GameObject currentAgent;
-//     private GameObject currentArtifact;
-//     private AgentScript currentAgentScript;
-//     private Artifact currentArtifactScript;
-//     private GameObject talkingAgent;
-//     private GameObject interactingArtifact;
-//     private AgentScript talkingAgentScript;
-//     private Artifact interactingArtifactScript;
-//     private bool imInConversation;
-//     private bool imInteractingWithArtifact;
-//     private string[] activationWords = { "hello", "hi", "hey", "greetings", "salutations", "yo", "good day" };
-//     private string[] deactivationWords = { "goodbye", "bye", "see you", "farewell", "later" };
-//     private string[] cancelRequestWords = { "cancel", "stop", "nevermind", "forget it", "that's wrong", "wrong", "i didn't mean that" };
-//     #endregion
+        #if PLATFORM_ANDROID
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            Permission.RequestUserPermission(Permission.Microphone);
+        }
+        #endif
 
-//     private bool lookingAtAgent; // Variabile per tracciare se stiamo guardando un agente durante la conversazione
+        if (appVoiceExperience != null)
+        {
+            appVoiceExperience.VoiceEvents.OnPartialTranscription.AddListener(OnTranscriptionDetected);
+            appVoiceExperience.VoiceEvents.OnFullTranscription.AddListener(OnFullTranscriptionDetected);
+            appVoiceExperience.VoiceEvents.OnError.AddListener((error, message) => Debug.LogError($"[VRGaze] Wit.ai Error: {error} - {message}"));
+        }
+        else
+        {
+            Debug.LogError("[VRGaze] appVoiceExperience non assegnato in Inspector!");
+        }
+    }
 
-//     #region Unity Lifecycle (Start, Enable, Disable, Destroy)
-//     void Start()
-//     {
-//         // Salviamo l'indice del layer una volta sola all'avvio
-//         agentLayerIndex = LayerMask.NameToLayer("Agent");
-//         artifactLayerIndex = LayerMask.NameToLayer("Artifact");
-//         imInConversation = false;
-//         imInteractingWithArtifact = false;
-//         //appVoiceExperience.VoiceEvents.OnFullTranscription.AddListener(OnTranscriptionDetected);
-//     }
+    private void OnDestroy()
+    {
+        if (appVoiceExperience != null && appVoiceExperience.VoiceEvents != null)
+        {
+            appVoiceExperience.VoiceEvents.OnPartialTranscription.RemoveListener(OnTranscriptionDetected);
+            appVoiceExperience.VoiceEvents.OnFullTranscription.RemoveListener(OnFullTranscriptionDetected);
+            appVoiceExperience.VoiceEvents.OnError.RemoveAllListeners();
+        }
+    }
 
-//     private void OnEnable()
-//     {
-//         if (triggerAction != null) triggerAction.action.Enable();
-//         if (secondaryTriggerAction != null) secondaryTriggerAction.action.Enable();
-//     }
+    #region Interazione con Agente (Tramite SelectEntered)
+    public void ToggleConversation(SelectEnterEventArgs args)
+    {
+        AgentScript clickedAgent = args.interactableObject.transform.GetComponentInParent<AgentScript>();
 
-//     private void OnDisable()
-//     {
-//         if (triggerAction != null) triggerAction.action.Disable();
-//         if (secondaryTriggerAction != null) secondaryTriggerAction.action.Disable();
-//     }
+        if (clickedAgent == null)
+        {
+            Debug.LogWarning("[VRGaze] Nessun AgentScript trovato sull'oggetto cliccato o sui suoi parent.");
+            return;
+        }
 
-//     private void OnDestroy()
-//     {
-//         /*if (appVoiceExperience != null && appVoiceExperience.VoiceEvents != null)
-//         {
-//             appVoiceExperience.VoiceEvents.OnFullTranscription.RemoveListener(OnTranscriptionDetected);
-//         }*/
-//     }
-//     #endregion
+        if (!imInConversation || talkingAgentScript != clickedAgent)
+        {
+            if (imInConversation && talkingAgentScript != null)
+            {
+                DeactivateAgent();
+            }
 
-//     #region Core Logic
-//     void Update()
-//     {
-//         if (!imInConversation && !imInteractingWithArtifact)
-//         {
-//             HandleSearchMode();
-//         }
-//         else if (imInConversation)
-//         {
-//             HandleConversationMode();
-//         }
-//         else if (imInteractingWithArtifact)
-//         {
-//             HandleInteractionMode();
-//         }
-//     }
+            talkingAgentScript = clickedAgent;
+            ActivateAgent();
+        }
+        else
+        {
+            DeactivateAgent();
+        }
+    }
 
-//     private void HandleSearchMode()
-//     {
-//         //Debug.DrawRay(vrHeadset.position, vrHeadset.forward * gazeDistance, Color.red);
-//         RaycastHit hitInfo;
+    private void ActivateAgent()
+    {
+        if (talkingAgentScript != null && !imInConversation)
+        {
+            imInConversation = true;
+            talkingAgentScript.call();
 
-//         if (Physics.Raycast(vrHeadset.position, vrHeadset.forward, out hitInfo, gazeDistance))
-//         {
-//             GameObject hitObj = hitInfo.collider.gameObject;
+            if (appVoiceExperience != null && !appVoiceExperience.Active)
+            {
+                appVoiceExperience.Activate();
+            }
+        }
+    }
 
-//             /*if (!appVoiceExperience.Active)
-//             {
-//                 appVoiceExperience.Activate();
-//             }*/
+    private void DeactivateAgent()
+    {
+        if (talkingAgentScript != null && imInConversation)
+        {
+            imInConversation = false;
+            talkingAgentScript.endCall();
 
-//             if (hitObj.layer != agentLayerIndex && currentAgent != null)
-//             {
-//                 currentAgentScript.DeactivateVisualClue();
-//                 currentAgent = null;
-//                 currentAgentScript = null;
+            if (appVoiceExperience != null && appVoiceExperience.Active)
+            {
+                appVoiceExperience.Deactivate();
+            }
 
-//                 /*if (appVoiceExperience.Active)
-//                 {
-//                     appVoiceExperience.Deactivate();
-//                 }*/
+            talkingAgentScript = null;
+        }
+    }
 
-//             }
-//             if (hitObj.layer != artifactLayerIndex && currentArtifact != null)
-//             {
-//                 currentArtifact = null;
-//                 currentArtifactScript = null;
-//             }
+    /// <summary>
+    /// Ferma solo l'ascolto del microfono (senza chiudere la conversazione con l'agente),
+    /// da chiamare quando la frase dell'utente è terminata.
+    /// </summary>
+    private void StopListening()
+    {
+        if (appVoiceExperience != null && appVoiceExperience.Active)
+        {
+            appVoiceExperience.Deactivate();
+        }
+    }
+    #endregion
 
-//             if (hitObj.layer == agentLayerIndex)
-//             {
-//                 if (currentAgent != hitObj && currentAgent != null)
-//                 {
-//                     currentAgentScript.DeactivateVisualClue();
-//                 }
+    #region Logica Vocale e Keywords
+    public void OnTranscriptionDetected(string text)
+    {
+        if (!imInConversation || talkingAgentScript == null) return;
 
-//                 if (currentAgent != hitObj)
-//                 {
-//                     currentAgent = hitObj;
-//                     currentAgentScript = hitObj.GetComponent<AgentScript>();
-//                     currentAgentScript.ActivateVisualClue();
-//                 }
+        if (VerifyEndKeyword(text))
+        {
+            DeactivateAgent();
+        }
+        else if (VerifyCancelRequest(text))
+        {
+            talkingAgentScript.CancelText();
+        }
+        else if (!string.IsNullOrWhiteSpace(text))
+        {
+            talkingAgentScript.updateText(text);
+        }
+    }
 
-//                 if (triggerAction.action.WasPressedThisFrame())
-//                 {
-//                     talkingAgent = currentAgent;
-//                     talkingAgentScript = currentAgentScript;
-//                     ActivateAgent();
-//                 }
-//                 //per presentazione da togliere
-//                 lookingAtAgent = true;
-//             }
-//             else if (hitObj.layer == artifactLayerIndex)
-//             {
-//                 if (currentArtifact != hitObj)
-//                 {
-//                     currentArtifact = hitObj;
-//                     currentArtifactScript = hitObj.GetComponent<Artifact>();
-//                     //currentArtifactScript.ActivateVisualClue();
-//                 }
-//                 if (triggerAction.action.WasPressedThisFrame())
-//                 {
-//                     interactingArtifact = currentArtifact;
-//                     interactingArtifactScript = currentArtifactScript;
-//                     ActivateArtifact();
-//                 }
-//             }
-//         }
-//         else if (currentAgent != null)
-//         {
-//             /*if (appVoiceExperience.Active)
-//             {
-//                 appVoiceExperience.Deactivate();
-//             }*/
-//             currentAgentScript.DeactivateVisualClue();
-//             currentAgent = null;
-//             currentAgentScript = null;
-//         }
-//         else if (currentArtifact != null)
-//         {
-//             currentArtifact = null;
-//             currentArtifactScript = null;
-//         }
-//     }
+    /// <summary>
+    /// Chiamato quando Wit.ai ha rilevato la fine della frase (trascrizione completa).
+    /// Ferma l'ascolto automaticamente, senza chiudere la conversazione con l'agente.
+    /// </summary>
+    public void OnFullTranscriptionDetected(string text)
+    {
+        OnTranscriptionDetected(text);
 
-//     private void HandleConversationMode()
-//     {
-//         RaycastHit hitInfo;
+        if (imInConversation && !VerifyEndKeyword(text))
+        {
+            StopListening();
+        }
+    }
 
-//         // Anche qui rimosso agentLayerMask per bloccare l'uso del trigger attraverso i muri
-//         if (Physics.Raycast(vrHeadset.position, vrHeadset.forward, out hitInfo, gazeDistance))
-//         {
-//             GameObject hitAgent = hitInfo.collider.gameObject;
+    private bool VerifyEndKeyword(string text)
+    {
+        string normalizedText = text.ToLower().Trim();
+        foreach (string keyword in deactivationWords)
+        {
+            if (normalizedText.EndsWith(keyword)) return true;
+        }
+        return false;
+    }
 
-//             // Assicuriamoci che l'oggetto colpito sia sul layer Agent
-//             if (hitAgent.layer == agentLayerIndex)
-//             {
-//                 if (triggerAction.action.WasPressedThisFrame())
-//                 {
-//                     if (hitAgent == talkingAgent)
-//                     {
-//                         DeactivateAgent();
-//                         currentAgent = null;
-//                         currentAgentScript = null;
-//                     }
-//                 }
-//                 else if (secondaryTriggerAction.action.WasPressedThisFrame())
-//                 {
-//                     if (hitAgent == talkingAgent)
-//                     {
-//                         currentAgentScript.sendToBDI(); // Invia il messaggio al BDI quando si preme il secondo trigger
-//                     }
-//                 }
-//             }
-
-//             ReactivateConversation();
-
-//             //per presentazione da togliere
-//             lookingAtAgent = true;
-//         }
-//         else
-//         {
-//             lookingAtAgent = false;
-//         }
-//     }
-
-//     private void HandleInteractionMode()
-//     {
-//         RaycastHit hitInfo;
-
-//         if (Physics.Raycast(vrHeadset.position, vrHeadset.forward, out hitInfo, gazeDistance))
-//         {
-//             GameObject hitArtifact = hitInfo.collider.gameObject;
-
-//             if (hitArtifact.layer == artifactLayerIndex)
-//             {
-//                 if (triggerAction.action.WasPressedThisFrame())
-//                 {
-//                     if (hitArtifact == interactingArtifact)
-//                     {
-//                         DeactivateArtifact();
-//                         currentArtifact = null;
-//                         currentArtifactScript = null;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     #endregion
-
-//     #region Actions (Agent & Voice Control)
-//     private void ActivateAgent()
-//     {
-//         if (talkingAgentScript != null && !imInConversation)
-//         {
-//             imInConversation = true;
-//             talkingAgentScript.call();
-//             Debug.Log("Activated voice");
-//             /*
-//             if (appVoiceExperience.Active)
-//             {
-//                 appVoiceExperience.Deactivate();
-//             }
-//             appVoiceExperience.Activate();*/
-//         }
-//     }
-
-//     private void ReactivateConversation()
-//     {
-//         if (talkingAgentScript != null && imInConversation)
-//         {
-//             /*if (!appVoiceExperience.Active)
-//             {
-//                 appVoiceExperience.Activate();
-//             }*/
-//         }
-//     }
-
-//     private void DeactivateAgent()
-//     {
-//         if (talkingAgentScript != null && imInConversation)
-//         {
-//             imInConversation = false;
-//             talkingAgentScript.endCall();
-//             Debug.Log("Deactivated voice");
-//             //appVoiceExperience.Deactivate();
-//         }
-//     }
-
-//     private void ActivateArtifact()
-//     {
-//         if (interactingArtifactScript != null && !imInteractingWithArtifact)
-//         {
-//             imInteractingWithArtifact = true;
-//             //interactingArtifactScript.Toggle();
-            
-//             interactingArtifactScript.Play();
-//             imInteractingWithArtifact = true;
-//         }
-//     }
-//     private void DeactivateArtifact()
-//     {
-//         if (interactingArtifactScript != null && imInteractingWithArtifact)
-//         {
-//             imInteractingWithArtifact = false;
-//             //interactingArtifactScript.Untoggle();
-//         }
-//     }
-
-//     public void OnTranscriptionDetected(string text)
-//     {
-//         //per presentazione da togliere
-//         if (lookingAtAgent == false) return;
-
-//         if (VerifyEndKeyword(text) && imInConversation)
-//         {
-//             Debug.Log("deactivation keyword found, deactivating " + talkingAgent.name);
-//             DeactivateAgent();
-//         }
-//         else if (VerifyCancelRequest(text) && imInConversation)
-//         {
-//             Debug.Log("cancel request keyword found, sending cancel request to " + talkingAgent.name);
-//             talkingAgentScript.CancelText();
-//             ReactivateConversation();
-//         }
-//         else if (VerifyKeyword(text) && !imInConversation)
-//         {
-//             Debug.Log("activation keyword found in search phase, activating " + currentAgent.name);
-//             //appVoiceExperience.Deactivate();
-//             talkingAgent = currentAgent;
-//             talkingAgentScript = currentAgentScript;
-//             ActivateAgent();
-//         }
-//         else if (imInConversation)
-//         {
-//             if (text.Trim() != "")
-//             {
-//                 Debug.Log("Updating text for " + talkingAgent.name + ": " + text);
-//                 talkingAgentScript.updateText(text);
-//                 ReactivateConversation();
-//             }
-//         }
-//     }
-//     #endregion
-
-//     #region Utility Methods
-//     private bool VerifyKeyword(string text)
-//     {
-//         string normalizedText = text.ToLower();
-//         foreach (string keyword in activationWords)
-//         {
-//             if (normalizedText.Contains(keyword))
-//             {
-//                 Debug.Log("Keyword detected: " + keyword);
-//                 return true;
-//             }
-//         }
-//         return false;
-//     }
-
-//     private bool VerifyEndKeyword(string text)
-//     {
-//         string normalizedText = text.ToLower();
-//         foreach (string keyword in deactivationWords)
-//         {
-//             if (normalizedText.EndsWith(keyword))
-//             {
-//                 Debug.Log("Deactivation keyword detected: " + keyword);
-//                 return true;
-//             }
-//         }
-//         return false;
-//     }
-
-//     private bool VerifyCancelRequest(string text)
-//     {
-//         string normalizedText = text.ToLower().Trim();
-//         foreach (string keyword in cancelRequestWords)
-//         {
-//             if (normalizedText.Contains(keyword))
-//             {
-//                 Debug.Log("Cancel request keyword detected: " + keyword);
-//                 return true;
-//             }
-//         }
-//         return false;
-
-//     }
-//     #endregion
-// }
+    private bool VerifyCancelRequest(string text)
+    {
+        string normalizedText = text.ToLower().Trim();
+        foreach (string keyword in cancelRequestWords)
+        {
+            if (normalizedText.Contains(keyword)) return true;
+        }
+        return false;
+    }
+    #endregion
+}

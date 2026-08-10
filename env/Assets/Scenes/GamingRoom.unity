@@ -3654,7 +3654,7 @@ PrefabInstance:
       addedObject: {fileID: 1998092096}
     - targetCorrespondingSourceObject: {fileID: 1767192433, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1998092101}
+      addedObject: {fileID: 1998092097}
   m_SourcePrefab: {fileID: 100100000, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
 --- !u!4 &606089401 stripped
 Transform:
@@ -8707,7 +8707,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4176669232821290061, guid: 47277a71bc5159140810dd4987453381, type: 3}
       propertyPath: playerBeliefs.budget
-      value: 2
+      value: 20
       objectReference: {fileID: 0}
     - target: {fileID: 5948206365555113673, guid: 47277a71bc5159140810dd4987453381, type: 3}
       propertyPath: m_AnchorMax.y
@@ -8748,7 +8748,7 @@ PrefabInstance:
     - target: {fileID: 8317576341307790979, guid: 47277a71bc5159140810dd4987453381, type: 3}
       propertyPath: m_SelectEntered.m_PersistentCalls.m_Calls.Array.data[1].m_Target
       value: 
-      objectReference: {fileID: 1998092101}
+      objectReference: {fileID: 1998092097}
     - target: {fileID: 8317576341307790979, guid: 47277a71bc5159140810dd4987453381, type: 3}
       propertyPath: m_SelectEntered.m_PersistentCalls.m_Calls.Array.data[1].m_CallState
       value: 2
@@ -10657,7 +10657,7 @@ CapsuleCollider:
   m_Height: 1
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &1998092101
+--- !u!114 &1998092097
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -10666,7 +10666,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1998092090}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5c9951dc971c048c88a3f2205bb54cfb, type: 3}
+  m_Script: {fileID: 11500000, guid: 41583512384d77f4f9c81f9ed15fadfd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   appVoiceExperience: {fileID: 1786055230}
