@@ -7485,6 +7485,72 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5216289181672986847, guid: 51189814640934a5f8fd596f75ee1869, type: 3}
   m_PrefabInstance: {fileID: 737240226}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1391079035
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1391079037}
+  - component: {fileID: 1391079036}
+  - component: {fileID: 1391079038}
+  m_Layer: 0
+  m_Name: ChatBDI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1391079036
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1391079035}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d76f6f2242aa84b6ca6f06636c66e054, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  gen_provider: openai
+  gen_model: llama-3.3-70b-versatile
+  gen_key: 
+  gen_url: https://api.groq.com/openai/v1/
+  emb_provider: ollama
+  emb_model: all-minilm
+  emb_url: http://localhost:11434/api/
+--- !u!4 &1391079037
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1391079035}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 21.517475, y: 1.489169, z: -2.44244}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1391079038
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1391079035}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 033c19c02aabf43a796034115ef64620, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  serverIP: 127.0.0.1
+  serverPort: 8080
 --- !u!1001 &1406031318
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -7986,6 +8052,8 @@ MonoBehaviour:
   colorHighlight: {r: 1, g: 0, b: 0, a: 1}
   canvas: {fileID: 800802885}
   textComponent: {fileID: 1712927151}
+  chatConnector: {fileID: 1391079038}
+  receiverTag: player1
 --- !u!1001 &1443471503
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11272,3 +11340,4 @@ SceneRoots:
   - {fileID: 1630341411}
   - {fileID: 382691689}
   - {fileID: 1786055231}
+  - {fileID: 1391079037}

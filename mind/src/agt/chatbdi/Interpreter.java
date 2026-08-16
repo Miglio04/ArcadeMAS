@@ -37,10 +37,25 @@ public class Interpreter extends AgArch {
     /** EmbeddingSpace manages the embedding space */
     private EmbeddingSpace embSpace;
 
+    private ChatBdiResponseListener chatBdiResponseListener;
+    private ChatBdiWebSocketClient chatBdiWebSocketClient;
+
     private Tester tester;
 
     protected void setTester(Tester  tester) {
         this.tester = tester;
+    }
+
+    public void setChatBdiResponseListener(ChatBdiResponseListener listener) {
+        this.chatBdiResponseListener = listener;
+    }
+
+    @Override
+    public void stop() {
+        if (chatBdiWebSocketClient != null) {
+            chatBdiWebSocketClient.close();
+        }
+        super.stop();
     }
 
     /**
@@ -63,6 +78,9 @@ public class Interpreter extends AgArch {
             initEmbeddingSpace();
             logInfo( "Initializing the Embedding Space" );
             chatUI = new ChatUI( getTS().getLogger(), getAgName() );
+            chatBdiWebSocketClient = new ChatBdiWebSocketClient(this, "localhost", 8080);
+            setChatBdiResponseListener(chatBdiWebSocketClient);
+            chatBdiWebSocketClient.start();
         } catch ( ConnectException ce ) {
             logSevere( ce.getMessage() );
             logFine( ce.getStackTrace().toString() );
@@ -96,6 +114,10 @@ public class Interpreter extends AgArch {
 
                 if (tester != null){
                     tester.onAgentResponse(msg);
+                }
+
+                if (chatBdiResponseListener != null) {
+                    chatBdiResponseListener.onAgentResponse(sender, msg);
                 }
 
             }).start();

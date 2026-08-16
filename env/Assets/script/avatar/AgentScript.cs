@@ -1,5 +1,6 @@
 using UnityEngine;
 using TMPro;
+using System;
 
 public class AgentScript : MonoBehaviour
 {
@@ -13,7 +14,13 @@ public class AgentScript : MonoBehaviour
     [Tooltip("The text component inside the Canvas. If left empty, it will be found automatically at start.")]
     [SerializeField] private TextMeshProUGUI textComponent;
 
-    //[SerializeField] private chatBdiConnetor chatConnector; // Riferimento al connettore BDI
+    [Header("ChatBDI Bridge")]
+    [Tooltip("Bridge used to send the spoken message to ChatBDI.")]
+    [SerializeField] private chatBdiConnetor chatConnector;
+
+    [Tooltip("ChatBDI receiver tag. If empty, the GameObject name is used.")]
+    [SerializeField] private string receiverTag = "";
+
     #endregion
 
     #region Internal State Variables
@@ -49,6 +56,11 @@ public class AgentScript : MonoBehaviour
         else
         {
             Debug.LogWarning("Warning: No Canvas assigned on " + gameObject.name);
+        }
+
+        if (chatConnector == null)
+        {
+            chatConnector = FindObjectOfType<chatBdiConnetor>();
         }
         
         // Setup del colore
@@ -150,7 +162,17 @@ public class AgentScript : MonoBehaviour
             Debug.Log("Empty message, not sending to BDI");
             return;
         }
-        //chatConnector.SendMessageToServer(gameObject.name, messageToSend); // Invia il messaggio al server BDI
+
+        string targetAgent = GetReceiverTag();
+        string spokenMessage = $"@{targetAgent} {messageToSend.Trim()}";
+
+        if (chatConnector == null)
+        {
+            Debug.LogWarning("No ChatBDI connector found for " + gameObject.name + ". Message not sent.");
+            return;
+        }
+
+        chatConnector.SendMessageToServer(targetAgent, spokenMessage);
         messageToSend = ""; // Resetta il messaggio dopo l'invio
         imWaithingForResponse = true; // Indica che stiamo aspettando una risposta dal BDI
         if (textComponent != null)
@@ -178,6 +200,11 @@ public class AgentScript : MonoBehaviour
         {
             textComponent.text = startingText; // Resetta il testo visualizzato a quello iniziale
         }
+    }
+
+    private string GetReceiverTag()
+    {
+        return string.IsNullOrWhiteSpace(receiverTag) ? gameObject.name : receiverTag.Trim();
     }
     #endregion
 }

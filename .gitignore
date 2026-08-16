@@ -20,7 +20,7 @@ env/*.apk
 env/*.aab
 env/*.unitypackage
 env/UIElementsSchema/
-env/Packages/
+env/Packages/*
 !env/Packages/manifest.json
 !env/Packages/packages-lock.json
 

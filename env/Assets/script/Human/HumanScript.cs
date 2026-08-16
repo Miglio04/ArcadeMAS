@@ -148,6 +148,11 @@ public class VRGazeInteraction : MonoBehaviour
     {
         OnTranscriptionDetected(text);
 
+        if (imInConversation && talkingAgentScript != null && !VerifyEndKeyword(text) && !VerifyCancelRequest(text))
+        {
+            talkingAgentScript.sendToBDI();
+        }
+
         if (imInConversation && !VerifyEndKeyword(text))
         {
             StopListening();

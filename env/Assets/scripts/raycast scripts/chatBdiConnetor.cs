@@ -1,25 +1,21 @@
 using UnityEngine;
-using System.IO;
-using System.Net.Sockets;
-using System.Threading;
 using System.Collections.Concurrent;
+using Newtonsoft.Json;
+using WebSocketSharp;
 
 public class chatBdiConnetor : MonoBehaviour
 {
     #region Settings & References
     [Header("Network Settings")]
-    [Tooltip("The IP address of the Java ChatBDI Server")]
+    [Tooltip("The address used by the shared WebSocket channel")]
     [SerializeField] private string serverIP = "127.0.0.1";
     
-    [Tooltip("The port used for the TCP connection")]
+    [Tooltip("The port used by the shared WebSocket channel")]
     [SerializeField] private int serverPort = 8080;
     #endregion
 
     #region Internal State Variables
-    private TcpClient client;
-    private StreamReader reader;
-    private StreamWriter writer;
-    private Thread clientThread;
+    private WebSocketChannel webSocketChannel;
     private ConcurrentQueue<string> messageQueue;
     #endregion
 
@@ -27,7 +23,17 @@ public class chatBdiConnetor : MonoBehaviour
     void Start()
     {
         messageQueue = new ConcurrentQueue<string>();
-        ConnectToServer();
+        var connectionInfo = new WSConnectionInfoModel(
+            $"ws://{serverIP}:{serverPort}", "CHATBDI", gameObject.name);
+        webSocketChannel = new WebSocketChannel(connectionInfo, OnWebSocketMessage);
+        try
+        {
+            webSocketChannel.StartServer();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError("Unable to start ChatBDI WebSocket channel: " + ex.Message);
+        }
     }
 
     void Update()
@@ -35,8 +41,21 @@ public class chatBdiConnetor : MonoBehaviour
         if (messageQueue.TryDequeue(out string currentMessage))
         {
             Debug.Log("Received from server: " + currentMessage);
-            string agent = currentMessage.Split('|')[0];
-            string message = currentMessage.Split('|')[1];
+            ArtifactMessage message;
+            try
+            {
+                message = JsonConvert.DeserializeObject<ArtifactMessage>(currentMessage);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("Malformed message from ChatBDI: " + ex.Message);
+                return;
+            }
+
+            if (message == null || message.MessageType != "chatResponse")
+                return;
+
+            string agent = message.AgentName;
             GameObject agentObj = GameObject.Find(agent);
             
             if (agentObj != null)
@@ -44,7 +63,7 @@ public class chatBdiConnetor : MonoBehaviour
                 AgentScript agentScript = agentObj.GetComponent<AgentScript>();
                 if (agentScript != null)
                 {
-                    agentScript.updateTextFromBDI(message);
+                    agentScript.updateTextFromBDI(message.MessagePayload);
                 }
             }
         }
@@ -52,72 +71,26 @@ public class chatBdiConnetor : MonoBehaviour
 
     void OnApplicationQuit()
     {
-        if (clientThread != null && clientThread.IsAlive)
-        {
-            clientThread.Abort();
-        }
-        if (writer != null)
-        {
-            writer.Close();
-        }
-        if (reader != null)
-        {
-            reader.Close();
-        }
-        if (client != null)
-        {
-            client.Close();
-        }
+        if (webSocketChannel != null)
+            webSocketChannel.StopServer();
     }
     #endregion
 
     #region Core Network Logic
-    private void ConnectToServer()
+    private void OnWebSocketMessage(object sender, MessageEventArgs args)
     {
-        try
-        {
-            Debug.Log("Connecting to server at " + serverIP + ":" + serverPort);
-            client = new TcpClient(serverIP, serverPort);
-            reader = new StreamReader(client.GetStream());
-            writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
-
-            clientThread = new Thread(ReceiveMessages);
-            clientThread.IsBackground = true;
-            clientThread.Start();
-        }
-        catch (SocketException ex)
-        {
-            Debug.LogError("SocketException: " + ex.Message);
-        }
-    }
-
-    private void ReceiveMessages()
-    {
-        try
-        {
-            while (client != null && client.Connected)
-            {
-                string recivedMessage = reader.ReadLine();
-                if (recivedMessage != null)
-                {
-                    messageQueue.Enqueue(recivedMessage);
-                    Debug.Log("Message received: " + recivedMessage);
-                }
-            }
-        }
-        catch (IOException ex)
-        {
-            Debug.LogError("interrupted reading: " + ex.Message);
-        }
+        if (args != null && !string.IsNullOrWhiteSpace(args.Data))
+            messageQueue.Enqueue(args.Data);
     }
 
     public void SendMessageToServer(string agent, string message)
     {
-        if (writer != null)
-        {
-            writer.WriteLine(agent + "|" + message);
-            Debug.Log("Message sent to server: " + agent + "|" + message);
-        }
+        if (webSocketChannel == null || string.IsNullOrWhiteSpace(message))
+            return;
+
+        var chatMessage = new ArtifactMessage("chatMessage", message, null, agent, null);
+        webSocketChannel.sendMessage(JsonConvert.SerializeObject(chatMessage));
+        Debug.Log("Message sent to ChatBDI over WebSocket: " + agent);
     }
     #endregion
 }

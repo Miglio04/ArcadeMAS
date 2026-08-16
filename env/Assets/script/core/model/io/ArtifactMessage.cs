@@ -16,6 +16,10 @@ public class ArtifactMessage
     public string AgentName { get; set; }
     [JsonProperty("param")]
     public object Param { get; set; }
+
+    public ArtifactMessage()
+    {
+    }
     
     public ArtifactMessage(string messageType, string messagePayload, string agentEvent, string agentName, object param)
     {

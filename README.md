@@ -22,3 +22,25 @@ To run the project, follow these steps:
 - JaCaMo: A framework for developing multi-agent systems, used to implement the agents in the arcade.
 - Vesna-Unity: A library that enables communication between JaCaMo agents and Unity.
 - ChatBDI: A communication protocol used for interaction between agents and the user.
+
+## Background
+The MAS Arcade project was developed with the goal of extending the pre-existing library Vesna-Unity. The initial version of this project can be found at [this repository](https://github.com/VEsNA-ToolKit/vesna-unity) under the branch `ZirpoliM`.
+
+
+## Goals
+Our work focused on:
+- Enhancing the interaction between the user and the Cartago Artifacts, allowing the interaction to follow the same logic as the interaction with the agents.
+- Enabling the user to interact with the agents through vr in Unity, allowing for a more immersive experience.
+
+## Project Structure
+The project is organized into the following folders:
+- `env`: Contains the Unity project files, including the Arcade scene and vr interactions.
+    - `Assets`: Contains the Unity assets, including models, textures, and scripts.
+        - `Scenes`: Contains the Arcade scene.
+        - `script`: Contains the scripts for agents, artfacts, and vr interactions.
+        - `scripts`: Contains the scripts of the raycast.
+
+- `mind`: Contains the JaCaMo project files, including the agent definitions and behaviors.
+    - `src`: Contains the source code for the JaCaMo agents and artifacts.
+        - `agt`: Contains the agents definition, ChatBDI implementation and vesna.
+        - `env/artifact`: Contains the Cartago artifacts definition.

@@ -24,6 +24,14 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 	//Utility used to configure .jcm file by adding agents
 	public static void ConfigureJcmFile(GameObject[] avatars, GameObject[] envArtifacts)
 	{
+		// Trova l'istanza di ChatBDIConfigurator nella scena
+		ChatBDIConfigurator chatBDIConfigurator = FindObjectOfType<ChatBDIConfigurator>();
+		if (chatBDIConfigurator == null)
+		{
+			Debug.LogError("ChatBDIConfigurator not found in the scene. Cannot configure the 'user' agent in the JCM file.");
+			return;
+		}
+
 		var envManagerObject = envArtifacts.FirstOrDefault(envArtifact => envArtifact.GetComponent<EnvironmentManagerArtifact>() != null);
 
 		if (envManagerObject != null)
@@ -36,28 +44,10 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 		// get the mas name
 		var masName = ExtractMasName(jcmContent);
 		var workspaceContent = ConfigureEnvironmentArtifacts(envArtifacts, jcmContent, out var workspaceName);
-		var agentsContent = GenerateAgentsContent(avatars, workspaceName);
-		string userJcmContent = @"	agent user : conversation.asl {
-			ag-arch: chatbdi.Interpreter
+		var agentsContent = GenerateAgentsContent(avatars, workspaceName); // Questo verrà posizionato prima dell'agente 'user'
 
-			// Percorsi allineati con la tua struttura directory attuale
-			nl2log_prompt : ""src/agt/chatbdi/modelfiles/nl2logPrompt.txt""
-			log2nl_prompt : ""src/agt/chatbdi/modelfiles/log2nlPrompt.txt""
-			nl2log_model  : ""src/agt/chatbdi/modelfiles/nl2log.txt""
-			log2nl_model  : ""src/agt/chatbdi/modelfiles/log2nl.txt""
-			class_model   : ""src/agt/chatbdi/modelfiles/classifier.txt""
-
-			// PARAMETRI DI GENERAZIONE GROQ (Usa provider openai per compatibilità)
-			gen_provider  : ""openai""
-			gen_model     : ""llama-3.3-70b-versatile""
-			gen_key       : """"
-			gen_url       : ""https://api.groq.com/openai/v1/""
-
-			// PARAMETRI EMBEDDING LOCALE (Ollama)
-			emb_provider  : ""ollama""
-			emb_model     : ""all-minilm""
-			emb_url       : ""http://localhost:11434/api/""
-		}";
+		// Ottieni il contenuto dell'agente 'user' direttamente dal configurator
+		string userJcmContent = chatBDIConfigurator.JcmUserAgentConfiguration;
 
 
 		if (File.Exists(_jcmFilePath))
@@ -65,7 +55,7 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 
 		// Create the new JCM file content
 		var newJcmContent = $"mas {masName} {{\n{agentsContent}{userJcmContent}\n\n\t{workspaceContent}}}\n";
-		// Write the new content to the JCM file
+		// Write the new content to the JCM file. Nota: agentsContent è posizionato prima di userJcmContent.
 		File.WriteAllText(_jcmFilePath, newJcmContent);
 
 	}
