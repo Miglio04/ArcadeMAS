@@ -82,7 +82,8 @@ task run (type: JavaExec, dependsOn: 'classes') {
     }
     
     mainClass = 'jacamo.infra.JaCaMoLauncher'
-    args 'arcade.jcm'
+    def jcmFile = project.hasProperty('jcm') ? project.property('jcm') : 'arcade.jcm'
+    args jcmFile
     
     // FIX BUG GRAFICO MAC: Forza l'uso del tema Metal per evitare i NullPointerException
     jvmArgs '-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel'
@@ -92,11 +93,13 @@ task run (type: JavaExec, dependsOn: 'classes') {
 
 task buildJCMDeps (type: JavaExec, dependsOn: 'classes') {
     mainClass = 'jacamo.infra.RunJaCaMoProject'
-    args = ['arcade.jcm', '--deps']
+    def jcmFile = project.hasProperty('jcm') ? project.property('jcm') : 'arcade.jcm'
+    args = [jcmFile, '--deps']
     classpath sourceSets.main.runtimeClasspath
 }
 
 jar {
+    dependsOn 'compileTestJava'
     duplicatesStrategy 'exclude'
     archiveBaseName = project.name
     from (project.projectDir.absolutePath + '/src') {

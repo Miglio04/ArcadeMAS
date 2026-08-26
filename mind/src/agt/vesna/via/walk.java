@@ -33,9 +33,9 @@ public class walk extends DefaultInternalAction {
                 type = TYPE_STEP;
             else if (args[0].isLiteral() || args[0].isString())
                 type = TYPE_GOTO;
-        } else if ( args.length == 2 && args[0].isLiteral() && args[1].isNumeric() )
+        } else if ( args.length == 2 && (args[0].isLiteral() || args[0].isString()) && args[1].isNumeric() )
             type = TYPE_GOTO;
-        else if ( args.length == 2 && args[0].isLiteral() && !args[1].isGround() )
+        else if ( args.length == 2 && (args[0].isLiteral() || args[0].isString()) && !args[1].isGround() )
             type = TYPE_GOTO;
         else
             return false;

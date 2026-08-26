@@ -43,7 +43,8 @@ public class WebSocketChannel extends WebSocketServer {
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        System.out.println("closed " + conn.getRemoteSocketAddress() + " with exit code " + code + " additional info " + reason);
+        System.out.println("Connection for " + jacamoElementName + "closed " + conn.getRemoteSocketAddress() +
+                " with exit code " + code + " additional info " + reason);
     }
 
     @Override // Received message from the client (Unity)

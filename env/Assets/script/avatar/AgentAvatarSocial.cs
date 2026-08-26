@@ -4,52 +4,45 @@ using System.Collections;
 using System.Collections.Generic;
 using script.core.model.io;
 using script.core.util;
-using TMPro;
-using UnityEditor.VersionControl;
 using UnityEngine;
-using UnityEngine.AI;
 using WebSocketSharp;
 
 public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
 {
     protected MovementModel movementModel;
-    protected AvatarAnimationController animationController; //aggiunta
+    protected AvatarAnimationController animationController;
+    private Dictionary<string, Action> messageHandlers;
+    private Dictionary<string, Action<WsMessage>> messageHandlersWithMessage;
 
     protected override void Awake()
     {
         base.Awake();
         // Set waypoints to follow
         movementModel = GetComponent<MovementModel>();
-        animationController = GetComponentInChildren<AvatarAnimationController>();//aggiunta
+        animationController = GetComponentInChildren<AvatarAnimationController>();
+
+        messageHandlers = new Dictionary<string, Action>
+        {
+            {MessageTypes.WsInitialization,  HandleConnectionMessage},
+            {MessageTypes.Stop,  HandleAgentStop},
+        };
+
+        messageHandlersWithMessage = new Dictionary<string, Action<WsMessage>>
+        {
+            {MessageTypes.Walk,  HandleAgentWalk},
+            {MessageTypes.Rotate, HandleAgentRotate},
+            {MessageTypes.Say, HandleAgentSay},
+            {MessageTypes.Grab, HandleAgentGrab},
+            {MessageTypes.Release, HandleAgentRelease}
+        };
 
     }
+
 
     protected void resetStoppingDistance()
     {
         agent.stoppingDistance = 1.0f;
     }
-    
-    // protected IEnumerator CheckIfReachedFriend(string friend)
-    // {
-    //     while (true)
-    //     {
-    //         // Check if the agent has reached the destination
-    //         if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
-    //         {
-    //             if (!agent.hasPath || agent.velocity.sqrMagnitude == 0f)
-    //             {
-    //                 Debug.Log("Agent has reached his friend.");
-    //                 transform.LookAt(GameObject.Find(friend).transform);
-    //                 SendMessageToJaCaMoBrain(UnityJacamoIntegrationUtil
-    //                     .createAndConvertJacamoMessageIntoJsonString("destinationReached", null,
-    //                         "reached_friend", null, friend));
-    //
-    //                 yield break; // Exit the coroutine
-    //             }
-    //         }
-    //         yield return new WaitForSeconds(0.1f); // Check every 0.1 seconds
-    //     }
-    // }
     
     protected IEnumerator WaitUntilReachedTarget(string target, bool isFriend = false)
     {
@@ -90,86 +83,20 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
         {
             var message = JsonConvert.DeserializeObject<WsMessage>(data);
             print("Received Message Type: " + message.Type);
-            switch (message.Type)
-            {
-                // [17.04.25] startWalking is now part of walk with random target
-                // case "startWalking":
-                //     // Avatar receives the type of artifact to reach
-                //     UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                //     {
-                //         resetStoppingDistance();
-                //         movementModel.IsStopped = false;
-                //         agent.ResetPath();
-                //         SetBaloonText("Walking");
-                //         movementModel.StartWalking();
-                //         StartCoroutine(ActivateVisionCone());
-                //     });
-                //     break;
-                case MessageTypes.WsInitialization:
-                    HandleConnectionMessage();
-                    break;
-                case MessageTypes.Walk:
-                    print("Agent needs to reach destination.");
-                    // Avatar receives the type of artifact to reach
-                    WalkData walkData = message.Data.ToObject<WalkData>();
 
-                    if (walkData.Target == null)
-                        break;
-                    
-                    if (walkData.Target == "random")
-                    {
-                        UnityMainThreadDispatcher.Instance().Enqueue(HandleRandomWalk);
-                        break;
-                    }
-                    
-                    UnityMainThreadDispatcher.Instance().Enqueue(() => { HandleTargetedWalk(walkData); });
-                    break;
-                case MessageTypes.Stop:
-                    HandleAgentStop();
-                    break;
-                case MessageTypes.Rotate:
-                    var rotateData = message.Data.ToObject<RotateData>();
-                    HandleRotateMessage(rotateData);
-                    break;
-                // [17.04.25] This case I think is useless, it is just a special case of walking with a target
-                // TODO: Add an if in the walk to manage this case
-                /*case "reachFriend":
-                    // Avatar receives the type of artifact to reach
-                    UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    {
-                       movementModel.IsStopped = true;
-                       // Delete previous path and reach friend
-                       agent.ResetPath();
-                       agent.stoppingDistance = 8.0f;
-                       EnableDisableVisionCone(false);
-                       reachDestination(message.MessagePayload);
-                       StartCoroutine(CheckIfReachedFriend(message.MessagePayload));
-                    });
-                    break;*/
-                case MessageTypes.Say:
-                    // Avatar receives the type of artifact to reach
-                    var saysData = message.Data.ToObject<SaysData>();
-                    UnityMainThreadDispatcher.Instance().Enqueue(() => { HandleSpeechBalloon(saysData); });
-                    break;
-                case MessageTypes.Grab:
-                    print("Agent needs to grab an artifact.");
-                    var grabData = message.Data.ToObject<GrabData>();
-                    UnityMainThreadDispatcher.Instance().Enqueue( () => { HandleArtifactGrab(grabData); } );
-                    break;
-                case MessageTypes.Release:
-                    print("Agent needs to release an artifact.");
-                    var releaseData = message.Data.ToObject<ReleaseData>();
-                    UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    {
-                        var artifact = GameObject.Find(releaseData.ArtifactName.Trim('"'));
-                        var snapPoint = GameObject.Find(releaseData.SnapPointName.Trim('"'));
-                        HandleArtifactRelease(artifact, snapPoint);
-                    });
-                    break;
-                default:
-                    print($"Unknown message type for {objInUse.name}");
-                    break;
+            if (messageHandlers.TryGetValue(message.Type, out var handler))
+            {
+                handler.Invoke();
+                return;
             }
+            
+            if (messageHandlersWithMessage.TryGetValue(message.Type, out var handlerWithMessage))
+            {
+                handlerWithMessage.Invoke(message);
+                return;
+            }
+            
+            print($"Unknown message type for {objInUse.name}");
         }
         catch (Exception ex)
         {
@@ -178,6 +105,54 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
         }
     }
 
+    private void HandleAgentWalk(WsMessage message)
+    {
+        print("Agent needs to reach destination.");
+        // Avatar receives the type of artifact to reach
+        WalkData walkData = message.Data.ToObject<WalkData>();
+
+        if (walkData.Target == null) return;
+        
+        if (walkData.Target == "random")
+        {
+            UnityMainThreadDispatcher.Instance().Enqueue(HandleRandomWalk);
+            return;
+        }
+                    
+        UnityMainThreadDispatcher.Instance().Enqueue(() => { HandleTargetedWalk(walkData); });
+    }
+    
+    private void HandleAgentRotate(WsMessage message)
+    {
+        var rotateData = message.Data.ToObject<RotateData>();
+        HandleRotateMessage(rotateData);
+    }
+
+    private void HandleAgentSay(WsMessage message)
+    {
+        var saysData = message.Data.ToObject<SaysData>();
+        UnityMainThreadDispatcher.Instance().Enqueue(() => { HandleSpeechBalloon(saysData); });
+    }
+
+    private void HandleAgentGrab(WsMessage message)
+    {
+        print("Agent needs to grab an artifact.");
+        var grabData = message.Data.ToObject<GrabData>();
+        UnityMainThreadDispatcher.Instance().Enqueue( () => { HandleArtifactGrab(grabData); } );
+    }
+    
+    private void HandleAgentRelease(WsMessage message)
+    {
+        print("Agent needs to release an artifact.");
+        var releaseData = message.Data.ToObject<ReleaseData>();
+        UnityMainThreadDispatcher.Instance().Enqueue(() =>
+        {
+            var artifact = GameObject.Find(releaseData.ArtifactName.Trim('"'));
+            var snapPoint = GameObject.Find(releaseData.SnapPointName.Trim('"'));
+            HandleArtifactRelease(artifact, snapPoint);
+        });
+    }
+    
     private void HandleTargetedWalk(WalkData walkData)
     {
         SetBaloonText("New destination: " + walkData.Target);
@@ -185,21 +160,16 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
         agent.ResetPath();
         EnableDisableVisionCone(false);
         ReachDestination(walkData.Target);
-
-        // Se il target e' un friend, aggiorna stoppingDistance e avvia il controllo specifico
+        
+        // If the target is a friend, updates stoppoingDistance and uses the correct check
         if (AgentBeliefs != null && AgentBeliefs.Friends.Contains(walkData.Target))
         {
             agent.stoppingDistance = 8.0f;
-            //animationController.SetAnimationState("say");
             ReachDestination(walkData.Target);
-                            
-            // CheckIfReachedTarget should be the same as CheckIfReachedFriend, but in the eventuality that
-            // we want to differentiate them in the future, I'm leaving both the methods available.
-            // Uncomment if the other method is not working properly.
-            //StartCoroutine(CheckIfReachedFriend(walkData.Target));
+            
                             
             StartCoroutine(WaitUntilReachedTarget(walkData.Target, true));
-            if (Mathf.Approximately(agent.stoppingDistance, 8.0f)) //da perfezionare
+            if (Mathf.Approximately(agent.stoppingDistance, 8.0f)) //TODO: find correct distance or better solution
             {
                 animationController.SetAnimationState("stop");
             }
@@ -223,7 +193,7 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
                             
         if (animationController != null)
         {
-            animationController.SetAnimationState("walk"); // o "stop"
+            animationController.SetAnimationState("walk"); // or "stop"
         }
     }
 
@@ -245,15 +215,10 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
             SetBaloonText("I'm stopped");
             movementModel.IsStopped = true;
             agent.isStopped = true;
-            //aggiunta
             if (animationController != null)
             {
                 animationController.SetAnimationState("stop");
             }
-            //fino a qui
-            // [17.04.25] This goes in the rotate msg
-            // transform.LookAt(GameObject.Find(message.MessagePayload).transform);
-            // EnableDisableVisionCone(false);
         });
     }
     

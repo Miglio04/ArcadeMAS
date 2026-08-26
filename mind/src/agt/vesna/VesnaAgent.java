@@ -71,7 +71,21 @@ public class VesnaAgent extends Agent{
             }
         }  );
         // Connect the body
-        client.connect();
+        boolean connected = false;
+        for (int i = 0; i < 10; i++) {
+            try {
+                client.connect();
+                connected = true;
+                break;
+            } catch (Exception e) {
+                System.out.printf("[%s] Tentativo %d fallito, ritento...%n", my_name, i+1);
+                Thread.sleep(1000);
+            }
+        }
+        if (!connected) {
+            stop("impossibile connettersi dopo 10 tentativi");
+            return;
+        }
     }
 
     // perform sends an action to the body
@@ -117,11 +131,12 @@ public class VesnaAgent extends Agent{
     }
 
     private void handle_movement( JSONObject data ) {
-        String type = data.getString( "type" );
-        String target = data.getString( "name" ); 
         try {
-            Literal percept = parseLiteral( "reached(" + type + ", " + target + ")" );
+            String type = data.getString( "type" );
+            String target = data.getString( "name" );
+            Literal percept = parseLiteral( "reached(" + type + ", \"" + target + "\")" );
             sense( percept );
+            System.out.println("[VesnaAgent] reached(" + type + ", " + target + ") segnalato.");
         } catch ( Exception e ) {
             e.printStackTrace();
         }
@@ -162,9 +177,22 @@ public class VesnaAgent extends Agent{
         System.out.println( "Received message: " + msg );
         JSONObject log = new JSONObject( msg );
         String sender = log.getString( "sender" );
-        String receiver = log.getString( "receiver" );
+        //removed receiver: never used and gave problems with explorer and navigator
         String type = log.getString( "type" );
-        JSONObject data = log.getJSONObject( "data" );
+
+        JSONObject data;
+        Object rawData = log.isNull("data") ? null : log.get("data");
+        if (rawData == null) {
+            if (!type.equals("error")) {
+                System.out.println("[VesnaAgent] Messaggio '" + type + "' senza data, ignorato.");
+            }
+            return;
+        }
+        if (rawData instanceof String) {
+            data = new JSONObject((String) rawData);
+        } else {
+            data = log.getJSONObject("data");
+        }
         switch( type ){
             case "signal" -> handle_event( data );
             case "sight" -> handle_sight( data );
@@ -172,6 +200,14 @@ public class VesnaAgent extends Agent{
             case "door" -> handle_door( data );
             case "artifactStrategy" -> handle_arts(data);
             case "user_interaction" -> handle_user_interaction(data);
+            case "node"                 -> handle_node(data);
+            case "edge"                 -> handle_edge(data);
+            case "connector_link"       -> handle_connector_link(data);
+            case "door_dist"            -> handle_door_dist(data);
+            case "new_object"           -> handle_new_object(data);
+            case "corridor"             -> handle_corridor(data);
+            case "exploration_complete" -> handle_exploration_complete(data);
+            case "current_room" -> handle_current_room(data);
             default -> System.out.println( "Unknown message type: " + type );
         }
     }
@@ -182,10 +218,18 @@ public class VesnaAgent extends Agent{
         kill_agent();
     }
 
-    // Handles a connection error: prints a message and kills the agent
+    // Handles a connection error: prints a message and retries
     public void vesna_handle_error( Exception ex ){
-        System.out.println( "[" + my_name + " ERROR] " + ex.getMessage() );
+    System.out.println( "[" + my_name + " ERROR] " + ex.getMessage() );
+    // Invece di kill_agent(), riprova la connessione
+    try {
+        Thread.sleep(2000);
+        System.out.println( "[" + my_name + "] Riprovo connessione..." );
+        client.reconnect();
+    } catch (Exception e) {
+        System.out.println( "[" + my_name + " ERROR] Retry fallito, killing agent" );
         kill_agent();
+    }
     }
 
     // Kills the agent calling the internal actions to drop all desires, intentions and events and then kill the agent;
@@ -216,4 +260,140 @@ public class VesnaAgent extends Agent{
             return parseLiteral(test);
         }
     }
+    private void handle_node(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String lit = String.format(
+            "node(\"%s\", \"%s\", %d, %s, %s, %s, \"%s\", \"%s\", %d)",
+            p.getString("id"),
+            p.getString("type"),
+            p.getInt("floor"),
+            p.get("x"), p.get("y"), p.get("z"),
+            p.optString("corridorId", ""),
+            p.optString("poleLabel", ""),
+            p.optInt("wsPort", 0)
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_edge(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String edgeId = p.getString("id");
+        String goName = edgeId;
+        String direction = "none";
+        if      (edgeId.startsWith("fw_"))      { goName = edgeId.substring(3); direction = "fw"; }
+        else if (edgeId.startsWith("bw_"))      { goName = edgeId.substring(3); direction = "bw"; }
+        else if (edgeId.startsWith("seg_"))     { goName = edgeId.substring(4); direction = "seg"; }
+        else if (edgeId.startsWith("central_")) { goName = edgeId.substring(8); direction = "central"; }
+
+        String lit = String.format(
+            "edge(\"%s\", \"%s\", \"%s\", %d, \"%s\", \"%s\", \"%s\", \"%s\", %s, %s, %d, %s)",
+            goName,
+            p.getString("from"),
+            p.getString("to"),
+            p.getInt("floor"),
+            p.optString("edgeType", ""),
+            p.optString("doorState", ""),
+            p.optString("side", ""),
+            direction,
+            p.optDouble("distFromA", 0.0),
+            p.optDouble("distFromB", 0.0),
+            p.optInt("wsPort", 0),
+            p.optBoolean("isPhysical", false)
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_connector_link(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String lit = String.format(
+            "connector_link(\"%s\", %d, %d, %s, %s, %s, %s, %s, %s, %s)",
+            p.getString("id"),
+            p.getInt("floorA"),
+            p.getInt("floorB"),
+            p.get("bidirectional"),
+            p.get("posAx"), p.get("posAy"), p.get("posAz"),
+            p.get("posBx"), p.get("posBy"), p.get("posBz")
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_door_dist(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String lit = String.format(
+            "door_dist(\"%s\", \"%s\", %d, %s)",
+            p.getString("roomA"),
+            p.getString("roomB"),
+            p.getInt("floor"),
+            p.get("distance")
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_new_object(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String lit = String.format(
+            "new_object(\"%s\", \"%s\", \"%s\", %d, %s, %s, %s)",
+            p.getString("artifactId"),
+            p.getString("roomId"),
+            p.getString("artifactType"),
+            p.getInt("wsPort"),
+            p.get("x"), p.get("y"), p.get("z")
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_corridor(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String lit = String.format(
+            "corridor(\"%s\", \"%s\", \"%s\", %d, %d)",
+            p.getString("corridorId"),
+            p.getString("poleA"),
+            p.getString("poleB"),
+            p.getInt("floor"),
+            p.optInt("wsPort", 0)
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_exploration_complete(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String lit = String.format(
+            "exploration_complete(\"%s\", \"%s\", %d, %d, %d, %d)",
+            p.getString("buildingId"),
+            p.getString("capturedAt"),
+            p.getInt("totalFloors"),
+            p.getInt("totalNodes"),
+            p.getInt("totalEdges"),
+            p.getInt("totalDists")
+        );
+        addBel(parseLiteral(lit));
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+private void handle_current_room(JSONObject data) {
+    try {
+        JSONObject p = data.getJSONObject("payload");
+        String roomId = p.getString("roomId");
+
+        // Rimuovi la vecchia belief e aggiungi la nuova
+        try { delBel(parseLiteral("current_room(_)")); }
+        catch (Exception ignored) {}
+
+        addBel(parseLiteral(String.format("current_room(\"%s\")", roomId)));
+        System.out.println("[VesnaAgent] Stanza corrente: " + roomId);
+    } catch (Exception e) { e.printStackTrace(); }
+}
 }

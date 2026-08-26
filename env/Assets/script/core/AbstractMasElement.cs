@@ -9,10 +9,12 @@ public abstract class AbstractMasElement : MonoBehaviour
     public GameObject objInUse;
     public string port;
     protected WebSocketChannel wsChannel;
+    public WebSocketChannel WsChannel => wsChannel;
     public string Port => port;
 
     protected void initializeWebSocketConnection(System.EventHandler<WebSocketSharp.MessageEventArgs> OnMessage)
     {
+        Debug.Log($"[AbstractMasElement] initializeWebSocketConnection chiamato, handler null: {OnMessage == null}, tipo: {this.GetType().Name}");
         // Initialize new web socket connection
         string url = "ws://localhost:" + port;
         WSConnectionInfoModel wSConnectionInfoModel = new WSConnectionInfoModel(url, "AGENT", objInUse.name);
@@ -20,40 +22,15 @@ public abstract class AbstractMasElement : MonoBehaviour
     }
 
     public async Task startServer() {
-        await Task.Run(() =>
-        {
-            wsChannel.StartServer();
-            return Task.CompletedTask;
-        });
-    }
-
-    // Method to connect to the websocket channel
-    // public async Task connectWs()
-    // {
-    //     int maxRetryAttempt = 3;
-    //     await Task.Run(async () =>
-    //     {
-    //         int currentAttempt = 1;
-    //         while (!wsChannel.IsWebSocketConnected && currentAttempt < maxRetryAttempt)
-    //         {
-    //             print("Connecting attemp n°: " + currentAttempt + " for " + wsChannel.ConnectionInfoModel.getName());
-    //             wsChannel.connect();
-    //             if (wsChannel.IsWebSocketConnected)
-    //             {                    
-    //                 break;
-    //             }
-    //             currentAttempt++;
-    //             // Wait 5 seconds before retrying
-    //             await Task.Delay(5000);
-    //         }
-    //     });
-    // }
-
-    // public bool testConnection()
-    // {
-    //     return wsChannel.IsWebSocketConnected;
-    // }
-
+    if (wsChannel == null) return;  // non inizializzato, salta
+    if (wsChannel.IsServerRunning) return;  // già aperto, salta
+    await Task.Run(() =>
+    {
+        wsChannel.StartServer();
+        return Task.CompletedTask;
+    });
+}
+    
     public string convertObjectIntoJson<T>(T objToConvert)
     {
         // Convert any object to JSON

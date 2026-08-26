@@ -8774,6 +8774,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4176669232821290061, guid: 47277a71bc5159140810dd4987453381, type: 3}
+      propertyPath: agentType
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 4176669232821290061, guid: 47277a71bc5159140810dd4987453381, type: 3}
       propertyPath: playerBeliefs.budget
       value: 20
       objectReference: {fileID: 0}
@@ -9324,6 +9328,7 @@ MonoBehaviour:
   primaryActionToTrigger: 
   secondaryActionToTrigger: 
   tertiaryActionToTrigger: 
+  roomNode: {fileID: 0}
 --- !u!1 &1671358237
 GameObject:
   m_ObjectHideFlags: 0

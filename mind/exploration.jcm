@@ -1,0 +1,17 @@
+mas exploration {
+    agent explorer : explorer.asl {
+        ag-class: vesna.VesnaAgent
+        beliefs: address(localhost)
+                 port(8080)
+        join: main
+    }
+    agent vesna_agent : navigator.asl {
+        ag-class: vesna.VesnaAgent
+        beliefs: address(localhost)
+                 port(8081)
+        join: main
+    }
+    workspace main {
+        artifact envManager: artifact.EnvManagerArtifact("envManager")
+    }
+}

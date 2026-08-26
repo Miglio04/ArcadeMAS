@@ -34,7 +34,7 @@ public class WsClient extends WebSocketClient {
 
 	@Override
 	public void onClose(int code, String reason, boolean remote) {
-		System.out.println("closed with exit code " + code + " additional info: " + reason);
+		System.out.println("[WsClient] closed with exit code " + code + " additional info: " + reason);
 	}
 
 	@Override

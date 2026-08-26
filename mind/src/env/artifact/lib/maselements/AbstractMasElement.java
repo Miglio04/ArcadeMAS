@@ -41,9 +41,13 @@ public abstract class AbstractMasElement extends Artifact{
             client.setMsgHandler( this::onMessageReceived );
 
             client.connect();
-
+            int i = 0;
             while (!client.isOpen()) {
                 Thread.sleep(100);
+                if (i%10 == 0){
+                    System.out.println("Connection not established yet for: " + name + ", port: " + port);
+                }
+                i+=1;
             }
 
             onConnectionEstablished();

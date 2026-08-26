@@ -3,16 +3,13 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
-using UnityEngine.Video;
 using WebSocketSharp;
 using script.core.util;
 using Unity.VisualScripting;
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
-using TMPro;
 
 [ExecuteAlways]
 public class Artifact : AbstractArtifact
@@ -35,15 +32,12 @@ public class Artifact : AbstractArtifact
     }
 
     private void OnDestroy()
-    {
-        var grabbable = gameObject.GetComponent<XRGrabInteractable>();
-
-        if (grabbable != null)
-        {
-            grabbable.selectEntered.RemoveAllListeners();
-            grabbable.selectExited.RemoveAllListeners();
-        }
-    }
+{
+    var grabbable = gameObject.GetComponent<XRGrabInteractable>();
+    if (grabbable == null) return;  // se non esiste, non fare nulla
+    grabbable.selectEntered.RemoveAllListeners();
+    grabbable.selectExited.RemoveAllListeners();
+}
 
     protected virtual void Awake()
     {
@@ -67,6 +61,10 @@ public class Artifact : AbstractArtifact
 
         if (Application.IsPlaying(gameObject))
         {
+            // Porta coerente con corridoi e porte: stesso PortAssigner, assegnata per nome.
+            // Sovrascrive il valore dell'Inspector (es. 8082) così non collide con i body.
+            port = PortAssigner.GetObjectPort(gameObject.name);
+
             // Play logic
             // Retrieve the property that belongs to the artifact       
             var artifactPropertyName = artifactType.ToString();
@@ -82,6 +80,8 @@ public class Artifact : AbstractArtifact
             }
 
             initializeWebSocketConnection(OnMessage);
+
+            _ = startServer();  
         }
         else
         {
@@ -265,55 +265,10 @@ public class Artifact : AbstractArtifact
 
         return grabbable;
     }
-
-    /*
-    public void Toggle()
-    {
-        if (artifactType.ToString() == "Lever")
-        {
-            Debug.Log($"[DEBUG] Leva {gameObject.name} azionata!");
-
-            if (objectRenderer != null)
-            {
-                objectRenderer.material.color = Color.green;
-            }
-
-            string jsonMessage = "{\"type\": \"toggled\"}";
-
-            if (wsChannel != null)
-            {
-                wsChannel.sendMessage(jsonMessage);
-            }
-            else
-            {
-                Debug.LogWarning("[WARNING] WebSocket non connessa.");
-            }
-        }
-    }
-    public void Untoggle()
-    {
-        if (artifactType.ToString() == "Lever")
-        {
-            Debug.Log($"[DEBUG] Leva {gameObject.name} deazionata!");
-
-            if (objectRenderer != null)
-            {
-                objectRenderer.material.color = Color.red;
-            }
-
-            string jsonMessage = "{\"type\": \"untoggled\"}";
-
-            if (wsChannel != null)
-            {
-                wsChannel.sendMessage(jsonMessage);
-            }
-            else
-            {
-                Debug.LogWarning("[WARNING] WebSocket non connessa.");
-            }
-        }
-    }
-    */
+    
+    // There were some unused Toggle() and Untoggle() methods here, if you need them, look them
+    // up through Git
+    // LEAVE THIS COMMENT HERE TO BE ABLE TO RECOVER THEM QUICKLY
 
     [Header("JaCaMo Action Settings")]
     [HideInInspector] public string primaryActionToTrigger;
@@ -352,4 +307,10 @@ public class Artifact : AbstractArtifact
             Debug.LogWarning("[WARNING] WebSocket non connessa.");
         }
     }
+    
+    // TENERE TRACCIA DELLA STANZA DI APPARTENENZA
+    [Header("Stanza di appartenenza")]
+    [Tooltip("Trascina qui il GameObject della stanza.")]
+    public GameObject roomNode;
+    public string roomId => roomNode != null ? roomNode.name : "room_unknown";
 }

@@ -2,7 +2,6 @@
 { include("libraryPlans.asl") }
 { include("buyItemPlans.asl") }
 { include("initialGoalsPlan.asl") }
-{ include( "artifacts.asl")}
 
 /* ----------------- INITIAL BELIEFS ---------------------*/
 sells("FruitShop", [apple, banana, orange, mango, pineapple, strawberry, grape, pear, peach, watermelon]).

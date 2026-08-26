@@ -1,7 +1,6 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using script.core.model.io;
 using script.core.util;
 using TMPro;
 using UnityEngine;
@@ -10,12 +9,15 @@ using WebSocketSharp;
 
 public abstract class AgentAvatar : AbstractMasElement
 {
-    public string agentFile; // TODO: Use the same as ArtifactResolver, i.e. save in editor and load at runtime, set from menu
+    public AgentTypeEnum agentType; 
     public AgentBeliefs agentBeliefs;
     public GameObject[] focusedArtifacts;
     public List<GoalEnum> goals;
     protected TextMeshPro nameTextMeshPro;
     protected NavMeshAgent agent;
+    
+    private Dictionary<string, Action> messageHandlers;
+    private Dictionary<string, Action<WsMessage>> messageHandlersWithMessage;
 
     protected virtual void Awake()
     {
@@ -34,13 +36,23 @@ public abstract class AgentAvatar : AbstractMasElement
         {
             Debug.LogWarning("TextMeshPro component not found in the avatar's children.");
         }
+
+        messageHandlers = new Dictionary<string, Action>
+        {
+            { MessageTypes.WsInitialization, HandleWsInitialization }
+        };
+
+        messageHandlersWithMessage = new Dictionary<string, Action<WsMessage>>
+        {
+            { MessageTypes.Walk, HandleAgentWalk }
+        };
     }
     
     protected void HandleArtifactGrab(GameObject artifact)
     {
         if (artifact != null)
         {
-            var artifactSocket = this.transform.Find("Body/artifactHolder");
+            var artifactSocket = transform.Find("Body/artifactHolder");
             artifact.transform.SetParent(artifactSocket);
             
             artifact.transform.localPosition = Vector3.zero; // Reset position to the socket's position
@@ -88,7 +100,7 @@ public abstract class AgentAvatar : AbstractMasElement
 
     public virtual AgentBeliefs AgentBeliefs => agentBeliefs;
 
-    public string AgentFile => agentFile;
+    public AgentTypeEnum AgentType => agentType;
 
     public List<GoalEnum> Goals => goals;
 
@@ -132,29 +144,41 @@ public abstract class AgentAvatar : AbstractMasElement
         try
         {
             var message = JsonConvert.DeserializeObject<WsMessage>(data);
-            switch (message.Type)
+            
+            if (messageHandlers.TryGetValue(message.Type, out var handler))
             {
-                case MessageTypes.WsInitialization:
-                    print("Connection established for " + objInUse.name);
-                    break;
-                case MessageTypes.Walk:
-                    print("Agent needs to reach destination.");
-                    // Avatar receives the type of artifact to reach
-                    var walkData = message.Data.ToObject<WalkData>();
-                    UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    {
-                        ReachDestination( walkData.Target );
-                    });
-                    break;
-                default:
-                    Debug.LogError("Unknown message type for " + objInUse.name);
-                    break;
+                handler.Invoke();
+                return;
             }
+            
+            if (messageHandlersWithMessage.TryGetValue(message.Type, out var handlerWithMessage))
+            {
+                handlerWithMessage.Invoke(message);
+                return;
+            }
+            
+            Debug.LogError("Unknown message type for " + objInUse.name);
         }
         catch (Exception)
         {
             print(data);
             Debug.LogError("Message could not be converted.");
         }
+    }
+    
+    private void HandleWsInitialization()
+    {
+        print("Connection established for " + objInUse.name);
+    }
+
+    private void HandleAgentWalk(WsMessage message)
+    {
+        print("Agent needs to reach destination.");
+        // Avatar receives the type of artifact to reach
+        var walkData = message.Data.ToObject<WalkData>();
+        UnityMainThreadDispatcher.Instance().Enqueue(() =>
+        {
+            ReachDestination( walkData.Target );
+        });
     }
 }

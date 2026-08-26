@@ -69,6 +69,11 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 		foreach (var avatar in avatars)
 		{
 			var avatarScript = avatar.GetComponent<AgentAvatar>();
+			if (avatarScript.AgentType == AgentTypeEnum.None)
+			{
+				Debug.LogError("[UnityJacamoIntegrationUtil] Agent " + avatar.name + " is of type None");
+				continue;
+			}
 			agentsContent += BuildAgentDefinition(avatar, avatarScript, workspaceName);
 		}
 
@@ -82,7 +87,7 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 		const string tabIndent = "\t\t";
 		const string doubleTabIndent = "\t\t\t";
     
-		var agentDef = $"\tagent {avatar.name}:{avatarScript.AgentFile} {{\n";
+		var agentDef = $"\tagent {avatar.name}:{avatarScript.AgentType.ToString().ToLower()}.asl {{\n";
     
 		// CLASS
 		agentDef += $"{tabIndent}ag-class: {agentClass}\n";
@@ -245,7 +250,7 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 
 	public static string CreateAndConvertJacamoMessageIntoJsonString(string messageType, string messagePayload, string agentEvent, string agentName, object param)
 	{
-		// In sight: messagePayload is null. agentName is null. param può essere o la stringa del nome o una struttura
+		// In sight: messagePayload is null. agentName is null. Param può essere o la stringa del nome o una struttura
 	 // artifactInfo.
 		// // WsMessage wsMessage = new WsMessage(messageType, messagePayload, agentEvent, agentName, param);
 		// // return JsonConvert.SerializeObject(wsMessage);
@@ -273,7 +278,8 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 				} else {
 					moveData = new MoveData( "error", "error" );
 				}
-				wsMsg = new BrainMessage( "body", "vesna", "movement", moveData );
+				//TODO: look into this if things don't work
+				wsMsg = new BrainMessage( "body", agentName, "movement", moveData );
 				break;
 			
 			case "supermarketDoorStatus":
@@ -294,6 +300,17 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 			case "userInteraction":
 				InteractionData interactionData = new InteractionData( (string) param );
 				wsMsg = new BrainMessage( "body", agentName, "user_interaction", interactionData );
+				break;
+			
+			case "node":
+			case "edge":
+			case "connector_link":
+			case "door_dist":
+			case "new_object":
+			case "corridor":
+			case "exploration_complete":
+			case "current_room":
+				wsMsg = new BrainMessage("body", agentName, messageType, param);
 				break;
 
 			default:

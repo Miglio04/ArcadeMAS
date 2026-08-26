@@ -1,7 +1,7 @@
 using Newtonsoft.Json;
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using script.core.util;
 using TMPro;
 using UnityEngine;
 using WebSocketSharp;
@@ -12,6 +12,9 @@ public abstract class AgentAvatarWithEyesAndVoice : AgentAvatar
     protected GameObject avatarEyes;
     protected TextMeshProUGUI baloonText;
 
+    private Dictionary<string, Action> messageHandlers;
+    private Dictionary<string, Action<WsMessage>> messageHandlersWithMessage;
+    
     protected override void Awake()
     {
         base.Awake();
@@ -19,6 +22,16 @@ public abstract class AgentAvatarWithEyesAndVoice : AgentAvatar
         {
             initializeAvatarWithEyes();
         }
+        
+        messageHandlers = new Dictionary<string, Action>
+        {
+            { MessageTypes.WsInitialization, HandleWsInitialization }
+        };
+
+        messageHandlersWithMessage = new Dictionary<string, Action<WsMessage>>
+        {
+            { MessageTypes.Walk, HandleAgentWalk }
+        };
     }
     protected void initializeAvatarWithEyes()
     {
@@ -54,34 +67,45 @@ public abstract class AgentAvatarWithEyesAndVoice : AgentAvatar
         try
         {
             message = JsonConvert.DeserializeObject<WsMessage>(data);
-            switch (message.Type)
+            if (messageHandlers.TryGetValue(message.Type, out var handler))
             {
-                case "wsInitialization":
-                    UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    {
-                        print("Connection established for " + objInUse.name);
-                    });
-                    break;
-                case "walk":
-                    print("Agent needs to reach destination.");
-                    // Avatar receives the type of artifact to reach
-                    UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    {
-                        WalkData data = message.Data.ToObject<WalkData>();
-                        SetBaloonText("New destination: " + data.Target );
-                        ReachDestination( data.Target );
-                    });
-                    break;
-                default:
-                    print("Unknown message type for " + objInUse.name);
-                    break;
+                handler.Invoke();
+                return;
             }
+            
+            if (messageHandlersWithMessage.TryGetValue(message.Type, out var handlerWithMessage))
+            {
+                handlerWithMessage.Invoke(message);
+                return;
+            }
+            
+            Debug.LogError("Unknown message type for " + objInUse.name);
         }
         catch (Exception ex)
         {
             print("Error: " + ex.Message);
             print("Message could not be converted.");
-            return;
         }
+    }
+    
+    
+    private void HandleWsInitialization()
+    {
+        UnityMainThreadDispatcher.Instance().Enqueue(() =>
+        {
+            print("Connection established for " + objInUse.name);
+        });
+    }
+
+    private void HandleAgentWalk(WsMessage message)
+    {
+        print("Agent needs to reach destination.");
+        // Avatar receives the type of artifact to reach
+        UnityMainThreadDispatcher.Instance().Enqueue(() =>
+        {
+            WalkData data = message.Data.ToObject<WalkData>();
+            SetBaloonText("New destination: " + data.Target );
+            ReachDestination( data.Target );
+        });
     }
 }
