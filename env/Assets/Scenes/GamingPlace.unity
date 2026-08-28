@@ -573,7 +573,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9182298925971332660, guid: 61a953650ab75ef42807da735da82cbe, type: 3}
       propertyPath: buildingId
-      value: building_casa_ArcadeMAS
+      value: refactor_exp_manager_2
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 378874682880196502, guid: 61a953650ab75ef42807da735da82cbe, type: 3}
