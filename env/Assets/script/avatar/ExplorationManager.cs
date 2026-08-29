@@ -200,6 +200,13 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     [CanBeNull] private static GameObject FindRoom(string roomId, [CanBeNull] FloorNode fd) => 
         fd?.roomObjects.Find(r => r != null && r.name == roomId);
 
+    private void ComputeCorridorOrders(string corridorId)
+    {
+        graph.ComputeForwardOrders(corridorId);
+        graph.ComputeBackwardOrders(corridorId);
+        graph.ComputeExplorationOrder(corridorId);
+    }
+
     // --------------------------------------------------------
     // AVVIO
     // --------------------------------------------------------
@@ -697,9 +704,7 @@ public void StartExploration(string startNodeId, Vector3 startPos)
             door.elementType == DoorVarcoScript.ElementType.Door,
             door.transform.position, computedSide, dA, dB, orderFW: 0);
 
-        graph.ComputeForwardOrders(corridorId);
-        graph.ComputeBackwardOrders(corridorId);
-        graph.ComputeExplorationOrder(corridorId);
+        ComputeCorridorOrders(corridorId);
 
         Debug.Log($"[ExplMgr] Porta polo-B → {corridorId}: {door.gameObject.name} " +
                   $"dA={dA:F1} dB={dB:F1} side={computedSide}");
@@ -833,7 +838,7 @@ public void StartExploration(string startNodeId, Vector3 startPos)
         }
 
         state = State.TraversingStairs;
-        StartCoroutine(TraverseStairsThen(targetFloor, ascending: targetFloor > currentFloor));
+        StartCoroutine(TraverseStairsThen(targetFloor));
     }
     
 
@@ -861,6 +866,141 @@ public void StartExploration(string startNodeId, Vector3 startPos)
             ProcessPoleTouched();
         }
     }
+    
+    //
+    // REFACTOR POLE TOUCHED
+    //
+
+    private void CreateCorridorSegment(string corridorId, Vector3 doorPos, string poleAId, string poleBId)
+    {
+        var nodeA = graph.GetNode($"{corridorId}_A");
+        var nodeB = graph.GetNode($"{corridorId}_B");
+        
+        string fromNode = null;
+        float bestDist = float.MaxValue;
+        if (nodeA != null) { float d = Vector3.Distance(doorPos, nodeA.position); if (d < bestDist) { bestDist = d; fromNode = $"{corridorId}_A"; } }
+        if (nodeB != null) { float d = Vector3.Distance(doorPos, nodeB.position); if (d < bestDist) { fromNode = $"{corridorId}_B"; } }
+        
+        float distToNewA = Vector3.Distance(doorPos, poleAPos);
+        float distToNewB = Vector3.Distance(doorPos, poleBPos);
+        string toNode = distToNewA <= distToNewB ? poleAId : poleBId;
+        
+        Vector3 fromPos = graph.GetNode(fromNode)?.position ?? Vector3.zero;
+        Vector3 toPos   = graph.GetNode(toNode)?.position   ?? Vector3.zero;
+        float distFromDoor = NavMeshDist(fromPos, doorPos);
+        float distDoorTo   = NavMeshDist(doorPos, toPos);
+        float dist = (distFromDoor >= 0f && distDoorTo >= 0f)
+            ? distFromDoor + distDoorTo
+            : Vector3.Distance(fromPos, toPos);
+
+        graph.AddSegmentArc(fromNode, toNode, dist, lastCorridorLinkDoorName, doorPos);
+    }
+
+    [CanBeNull]
+    private string GetOtherCorridorIdIfDoorMatchesCorridorCriteria(DoorVarcoScript door)
+    {
+        if (!door.isCorridorLink) return null;
+        string front = door.roomFront?.name ?? "";
+        string back  = door.roomBack?.name  ?? "";
+
+        // La porta deve avere un lato sul nuovo corridoio
+        bool newIsA = (front == pendingCorridorId || back == pendingCorridorId);
+        if (!newIsA) return null;
+
+        // L'altro lato deve essere un corridoio già scoperto
+        string otherCorrId = (front == pendingCorridorId) ? back : front;
+        // ← aggiungi qui, dopo otherCorrId è dichiarato
+        var otherCorrDataCheck = FindCorridorData(otherCorrId);
+        if (otherCorrDataCheck == null) return null;
+            
+        var otherNodeA = graph.GetNode($"{otherCorrId}_A");
+        var otherNodeB = graph.GetNode($"{otherCorrId}_B");
+        if (otherNodeA == null && otherNodeB == null) return null; // non ancora scoperto
+        return otherCorrId;
+    }
+    
+    private void TouchedFirstPole(CorridorData corridorData)
+    {
+        poleAPos = pendingPolePos;
+        Vector3 targetB = pendingPoleId == "1"
+            ? corridorData.Pole2Position
+            : corridorData.Pole1Position;
+        poleBPos = targetB;
+
+        graph.AddCorridorPoles(pendingCorridorId, poleAPos, poleBPos,
+            Vector3.Distance(poleAPos, poleBPos));
+
+        string comingFromNodeId = currentNodeId;
+        string poleAId          = $"{pendingCorridorId}_A";
+        currentNodeId           = poleAId;
+        graph.EnterNode(poleAId);
+
+        if (!string.IsNullOrEmpty(comingFromNodeId) && 
+            (comingFromNodeId.EndsWith("_B") || comingFromNodeId.EndsWith("_A")))
+        {
+            string comingCorridor = comingFromNodeId[..^2];
+
+            var linkDoor = FindDoorScript(lastCorridorLinkDoorName);
+
+            string f = linkDoor?.roomFront?.name ?? "";
+            string b = linkDoor?.roomBack?.name  ?? "";
+            bool directlyLinked = linkDoor != null &&
+                                (f == comingCorridor || b == comingCorridor) &&
+                                (f == pendingCorridorId || b == pendingCorridorId);
+
+            if (directlyLinked)
+            {
+                CreateCorridorSegment(comingCorridor, linkDoor.transform.position, poleAId, poleBId: $"{pendingCorridorId}_B");
+            }
+            lastCorridorLinkDoorName = null;
+        }
+        // Dopo aver creato i poli del nuovo corridoio,
+        // cerca corridorLink già registrati che connettono
+        // un corridoio già scoperto a questo nuovo corridoio.
+        string newCorrA = $"{pendingCorridorId}_A";
+        string newCorrB = $"{pendingCorridorId}_B";
+        foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
+        { 
+            string otherCorrId = GetOtherCorridorIdIfDoorMatchesCorridorCriteria(door);
+
+            // Trova il polo più vicino dell'altro corridoio rispetto alla porta
+            if (otherCorrId != null) CreateCorridorSegment(otherCorrId, door.transform.position, newCorrA, newCorrB);
+           
+        }
+
+        transitCorridorId = pendingCorridorId;
+        registeredTransitDoors.Clear();
+
+        navAgent.isStopped = false;
+        navAgent.SetDestination(targetB);
+        explorationVisionCone?.StartTransitScan(poleAPos, targetB, pendingCorridorId);
+        inRoomMode = false;
+        state      = State.Transiting;
+
+        Debug.Log($"[ExplMgr] Transito {pendingCorridorId}: A={poleAPos} → B={targetB}");
+    }
+
+
+    private void TouchedAnotherPole()
+    {
+        explorationVisionCone?.StopTransitScan();
+
+        string poleBId = $"{pendingCorridorId}_B";
+        currentNodeId  = poleBId;
+        graph.EnterNode(poleBId);
+
+        ScanCorridorDoorsFromScript(pendingCorridorId);
+
+        ComputeCorridorOrders(pendingCorridorId);
+
+        graph.MarkEdgeExplored($"{pendingCorridorId}_A",
+            $"central_{pendingCorridorId}", poleBId);
+
+        movingToPoleCorridorId = null;
+        Debug.Log($"[ExplMgr] Polo B toccato. Inizio ispezione {pendingCorridorId}.");
+        StartRotation360(isRoom: false);
+    }
+    
 
   private void ProcessPoleTouched()
     {
@@ -871,155 +1011,11 @@ public void StartExploration(string startNodeId, Vector3 startPos)
 
         if (isFirstPole)
         {
-            poleAPos = pendingPolePos;
-            Vector3 targetB = pendingPoleId == "1"
-                ? corridorData.Pole2Position
-                : corridorData.Pole1Position;
-            poleBPos = targetB;
-
-            graph.AddCorridorPoles(pendingCorridorId, poleAPos, poleBPos,
-                Vector3.Distance(poleAPos, poleBPos));
-
-            string comingFromNodeId = currentNodeId;
-            string poleAId          = $"{pendingCorridorId}_A";
-            currentNodeId           = poleAId;
-            graph.EnterNode(poleAId);
-
-            if (!string.IsNullOrEmpty(comingFromNodeId) && 
-                (comingFromNodeId.EndsWith("_B") || comingFromNodeId.EndsWith("_A")))
-            {
-                string comingCorridor = comingFromNodeId.EndsWith("_B") 
-                    ? comingFromNodeId.Replace("_B", "") 
-                    : comingFromNodeId.Replace("_A", "");
-
-                var linkDoor = !string.IsNullOrEmpty(lastCorridorLinkDoorName)
-                    ? FindDoorScript(lastCorridorLinkDoorName) : null;
-
-                string f = linkDoor?.roomFront?.name ?? "";
-                string b = linkDoor?.roomBack?.name  ?? "";
-                bool directlyLinked = linkDoor != null &&
-                                    (f == comingCorridor || b == comingCorridor) &&
-                                    (f == pendingCorridorId || b == pendingCorridorId);
-
-                if (directlyLinked)
-                {
-                    var nodeA = graph.GetNode($"{comingCorridor}_A");
-                    var nodeB = graph.GetNode($"{comingCorridor}_B");
-                    Vector3 doorPos = linkDoor.transform.position;
-
-                    string fromNode = null;
-                    float bestDist = float.MaxValue;
-                    if (nodeA != null) { float d = Vector3.Distance(doorPos, nodeA.position); if (d < bestDist) { bestDist = d; fromNode = $"{comingCorridor}_A"; } }
-                    if (nodeB != null) { float d = Vector3.Distance(doorPos, nodeB.position); if (d < bestDist) { bestDist = d; fromNode = $"{comingCorridor}_B"; } }
-
-                    string poleBId = $"{pendingCorridorId}_B";
-                    float distToNewA = Vector3.Distance(doorPos, poleAPos);
-                    float distToNewB = Vector3.Distance(doorPos, poleBPos);
-                    string toNode = distToNewA <= distToNewB ? poleAId : poleBId;
-
-                    Vector3 fromPos = graph.GetNode(fromNode)?.position ?? Vector3.zero;
-                    Vector3 toPos   = graph.GetNode(toNode)?.position   ?? Vector3.zero;
-                    float distFromDoor = NavMeshDist(fromPos, doorPos);
-                    float distDoorTo   = NavMeshDist(doorPos, toPos);
-                    float dist = (distFromDoor >= 0f && distDoorTo >= 0f)
-                        ? distFromDoor + distDoorTo
-                        : Vector3.Distance(fromPos, toPos);
-
-                    graph.AddSegmentArc(fromNode, toNode, dist, lastCorridorLinkDoorName, doorPos);
-                }
-                lastCorridorLinkDoorName = null;
-            }
-            // Dopo aver creato i poli del nuovo corridoio,
-            // cerca corridorLink già registrati che connettono
-            // un corridoio già scoperto a questo nuovo corridoio.
-            string newCorrA = $"{pendingCorridorId}_A";
-            string newCorrB = $"{pendingCorridorId}_B";
-            foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
-            {
-                if (!door.isCorridorLink) continue;
-                string front = door.roomFront?.name ?? "";
-                string back  = door.roomBack?.name  ?? "";
-
-                // La porta deve avere un lato sul nuovo corridoio
-                bool newIsA = (front == pendingCorridorId || back == pendingCorridorId);
-               /* // L'altro lato deve essere esattamente un corridoio con poli già scoperti,
-                // non una stanza intermedia
-                var otherCorrDataCheck = FindCorridorData(otherCorrId);
-                if (otherCorrDataCheck == null) continue; // non è un corridoio, salta*/
-                if (!newIsA) continue;
-
-                // L'altro lato deve essere un corridoio già scoperto
-                string otherCorrId = (front == pendingCorridorId) ? back : front;
-                // ← aggiungi qui, dopo otherCorrId è dichiarato
-                var otherCorrDataCheck = FindCorridorData(otherCorrId);
-                if (otherCorrDataCheck == null) continue;
-                var otherNodeA = graph.GetNode($"{otherCorrId}_A");
-                var otherNodeB = graph.GetNode($"{otherCorrId}_B");
-                if (otherNodeA == null && otherNodeB == null) continue; // non ancora scoperto
-
-                // Trova il polo più vicino dell'altro corridoio rispetto alla porta
-                Vector3 doorPos = door.transform.position;
-                string fromNode = null;
-                float bestDist = float.MaxValue;
-                if (otherNodeA != null)
-                {
-                    float d = Vector3.Distance(doorPos, otherNodeA.position);
-                    if (d < bestDist) { bestDist = d; fromNode = $"{otherCorrId}_A"; }
-                }
-                if (otherNodeB != null)
-                {
-                    float d = Vector3.Distance(doorPos, otherNodeB.position);
-                    if (d < bestDist) { bestDist = d; fromNode = $"{otherCorrId}_B"; }
-                }
-
-                // Trova il polo più vicino del nuovo corridoio rispetto alla porta
-                float distToNewA = Vector3.Distance(doorPos, poleAPos);
-                float distToNewB = Vector3.Distance(doorPos, poleBPos);
-                string toNode = distToNewA <= distToNewB ? newCorrA : newCorrB;
-        
-                Vector3 fromPos = graph.GetNode(fromNode)?.position ?? Vector3.zero;
-                Vector3 toPos   = graph.GetNode(toNode)?.position   ?? Vector3.zero;
-                float distFromDoor = NavMeshDist(fromPos, doorPos);
-                float distDoorTo   = NavMeshDist(doorPos, toPos);
-                float dist = (distFromDoor >= 0f && distDoorTo >= 0f)
-                    ? distFromDoor + distDoorTo
-                    : Vector3.Distance(fromPos, toPos);
-
-                graph.AddSegmentArc(fromNode, toNode, dist, door.gameObject.name, doorPos);
-               
-            }
-
-            transitCorridorId = pendingCorridorId;
-            registeredTransitDoors.Clear();
-
-            navAgent.isStopped = false;
-            navAgent.SetDestination(targetB);
-            explorationVisionCone?.StartTransitScan(poleAPos, targetB, pendingCorridorId);
-            inRoomMode = false;
-            state      = State.Transiting;
-
-            Debug.Log($"[ExplMgr] Transito {pendingCorridorId}: A={poleAPos} → B={targetB}");
+            TouchedFirstPole(corridorData);
         }
         else
         {
-            explorationVisionCone?.StopTransitScan();
-
-            string poleBId = $"{pendingCorridorId}_B";
-            currentNodeId  = poleBId;
-            graph.EnterNode(poleBId);
-
-            ScanCorridorDoorsFromScript(pendingCorridorId);
-
-            graph.ComputeForwardOrders(pendingCorridorId);
-            graph.ComputeBackwardOrders(pendingCorridorId);
-            graph.ComputeExplorationOrder(pendingCorridorId);
-
-            graph.MarkEdgeExplored($"{pendingCorridorId}_A",
-                $"central_{pendingCorridorId}", poleBId);
-
-            movingToPoleCorridorId = null;
-            Debug.Log($"[ExplMgr] Polo B toccato. Inizio ispezione {pendingCorridorId}.");
-            StartRotation360(isRoom: false);
+            TouchedAnotherPole();
         }
 
         pendingCorridorId = null;
@@ -1079,21 +1075,19 @@ public void StartExploration(string startNodeId, Vector3 startPos)
             if (currentNodeId != null && currentNodeId.EndsWith("_B"))
             {
                 string corrId = currentNodeId.Replace("_B", "");
-                graph.ComputeForwardOrders(corrId);
-                graph.ComputeBackwardOrders(corrId);
-                graph.ComputeExplorationOrder(corrId);
+                ComputeCorridorOrders(corrId);
             }
 
             if (inRoomMode && !string.IsNullOrEmpty(currentNodeId))
-                {
-                    var currentNode = graph.GetNode(currentNodeId);
-                    bool hasUnexploredDoors = currentNode != null &&
-                        currentNode.edges.Exists(e => e != null &&
-                                                    e.state != EdgeState.Explored &&
-                                                    e.edgeType == EdgeType.Door);
-                    if (!hasUnexploredDoors)
-                        ScanRoomDoorsFromScript(currentNodeId);
-                }
+            {
+                var currentNode = graph.GetNode(currentNodeId);
+                bool hasUnexploredDoors = currentNode != null &&
+                                          currentNode.edges.Exists(e => e != null &&
+                                                                        e.state != EdgeState.Explored &&
+                                                                        e.edgeType == EdgeType.Door);
+                if (!hasUnexploredDoors)
+                    ScanRoomDoorsFromScript(currentNodeId);
+            }
 
             DecideNextAction();
         }
@@ -1123,17 +1117,14 @@ public void StartExploration(string startNodeId, Vector3 startPos)
         }
 
         var door = FindDoorScript(currentEdge.id);
-        if (door != null && !door.IsTraversable)
+        if (door != null && !door.IsTraversable && !door.TryOpen())
         {
-            if (!door.TryOpen())
-            {
-                currentEdge.doorState = DoorState.Locked;
-                graph.MarkEdgeExplored(currentNodeId, currentEdge.id, null);
-                currentEdge = null;
-                navAgent.isStopped = false;
-                DecideNextAction();
-                return;
-            }
+            currentEdge.doorState = DoorState.Locked;
+            graph.MarkEdgeExplored(currentNodeId, currentEdge.id, null);
+            currentEdge = null;
+            navAgent.isStopped = false;
+            DecideNextAction();
+            return;
         }
 
         EnterThroughEdge(currentEdge);
@@ -1168,8 +1159,7 @@ public void StartExploration(string startNodeId, Vector3 startPos)
         if (arrived || pathFailed || timedOut)
         {
             backtrackTimer = 0f;
-            if (timedOut && !arrived){}
-
+            
             currentNodeId = graph.CurrentNodeId;
             if (string.IsNullOrEmpty(currentNodeId)) { CheckFloorCompletion(); return; }
 
@@ -1188,10 +1178,9 @@ private void UpdateMovingToConnector()
         int targetFloor = (pendingConnector.floorFrom == currentFloor)
             ? pendingConnector.floorTo
             : pendingConnector.floorFrom;
-        bool ascending = targetFloor > currentFloor;
-
         state = State.TraversingStairs;
-        StartCoroutine(TraverseStairsThen(targetFloor, ascending));
+        
+        StartCoroutine(TraverseStairsThen(targetFloor));
     }
 }
     // ====================================================
@@ -1263,15 +1252,15 @@ private void UpdateMovingToConnector()
                 nextEdge = graph.NextRoomEdgeToInspect(currentNodeId);
                 if (nextEdge != null){}
             }
-             if (nextEdge == null)
-                {
-                    nextEdge = node.edges.FirstOrDefault(e =>
-                        e != null &&
-                        e.state != EdgeState.Explored &&
-                        e.isCorridorLink);
-                    if (nextEdge != null)
-                        Debug.Log($"[ExplMgr] Corridor link non esplorato trovato: {nextEdge.id}");
-                }
+            if (nextEdge == null)
+            {
+                nextEdge = node.edges.FirstOrDefault(e =>
+                    e != null &&
+                    e.state != EdgeState.Explored &&
+                    e.isCorridorLink);
+                if (nextEdge != null)
+                    Debug.Log($"[ExplMgr] Corridor link non esplorato trovato: {nextEdge.id}");
+            }
         }
         else if (node.type == NodeType.Room)
             nextEdge = graph.NextRoomEdgeToInspect(currentNodeId);
@@ -1789,11 +1778,6 @@ private bool IsCurrentFloorFullyExplored(FloorNode floorData)
     var floorData = buildingGraph?.GetFloor(targetFloor);
     if (floorData != null)
     {
-        Vector3 warpTarget = (activeConnector != null)
-            ? (isReverse ? activeConnector.triggerStartPosition : activeConnector.triggerEndPosition)
-            : floorData.spawnPosition;
-
-        
         string spawnId = !string.IsNullOrEmpty(connNodeId)
             ? connNodeId
             : (floorData.spawnObject != null ? floorData.spawnObject.name : $"floor_{targetFloor}_entry");
@@ -2063,8 +2047,10 @@ private bool IsCurrentFloorFullyExplored(FloorNode floorData)
     return nodeId;
 }
 
-    private DoorVarcoScript FindDoorScript(string name)
+    [CanBeNull]
+    private DoorVarcoScript FindDoorScript([CanBeNull] string name)
     {
+        if (name == null) return null;
         string cleanName = name;
         if (name.StartsWith("fw_"))   cleanName = name.Substring(3);
         if (name.StartsWith("bw_"))   cleanName = name.Substring(3);
@@ -2105,7 +2091,7 @@ private void ResetCorridorPoles(string corridorId)
 }
 
 //PORTE PER LE SCALE
-private IEnumerator TraverseStairsThen(int targetFloor, bool ascending)
+private IEnumerator TraverseStairsThen(int targetFloor)
 {
     var activeConnector = pendingConnector;
 
