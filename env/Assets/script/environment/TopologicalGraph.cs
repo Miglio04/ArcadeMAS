@@ -222,7 +222,7 @@ public class TopologicalGraph
     // =========================================================
     public void AddDoorEdges(string corridorId, string doorId, bool isPhysical,
                              Vector3 doorPos, string side,
-                             float distFromA, float distFromB, int orderFW, bool isCorridorLink = false)
+                             float distFromA, float distFromB, bool isCorridorLink = false)
     {
         string idA = $"{corridorId}_A";
         string idB = $"{corridorId}_B";
@@ -649,12 +649,7 @@ public class TopologicalGraph
             e => e != null && e.edgeType == EdgeType.Central);
         return centralEdge != null && centralEdge.state == EdgeState.Explored;
     }
-
-    /*public void ResetCorridorPoles(string corridorId)
-    {
-        nodes.Remove($"{corridorId}_A");
-        nodes.Remove($"{corridorId}_B");
-    }*/
+    
 
    
 
