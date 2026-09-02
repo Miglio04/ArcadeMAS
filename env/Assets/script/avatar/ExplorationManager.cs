@@ -1630,123 +1630,116 @@ private void UpdateMovingToConnector()
     }
     
 
- // ──────────────────────────────────────────────────────────────
-// METODO 2: IsCurrentFloorFullyExplored
-// ──────────────────────────────────────────────────────────────
-private bool IsCurrentFloorFullyExplored(FloorNode floorData)
-{
-    // 1. Il grafo del piano corrente deve avere tutti gli archi esplorati
-    if (!graph.IsFullyExplored())
+    // ──────────────────────────────────────────────────────────────
+    // METODO 2: IsCurrentFloorFullyExplored
+    // ──────────────────────────────────────────────────────────────
+    private bool IsCurrentFloorFullyExplored(FloorNode floorData)
     {
-        Debug.LogWarning("[ExplMgr] Floor has unexplored edges.");
-        return false;
-    }
- 
-    // 2. Tutti i roomObjects del BuildingGraph per questo piano devono
-    //    essere stati visitati come nodi nel grafo.
-    if (floorData != null && floorData.roomObjects.Count > 0)
-    {
-        Debug.LogWarning("[ExplMgr] Floor has unexplored Rooms.");
+        // 1. Il grafo del piano corrente deve avere tutti gli archi esplorati
+        if (!graph.IsFullyExplored())
+        {
+            Debug.LogWarning("[ExplMgr] Floor has unexplored edges.");
+            return false;
+        }
+     
+        // 2. Tutti i roomObjects del BuildingGraph per questo piano devono
+        //    essere stati visitati come nodi nel grafo.
+        if (floorData == null || floorData.roomObjects.Count <= 0) return true;
         foreach (string roomId in floorData.roomIds)
         {
             // Check diretto: nodo con ID uguale al nome del GameObject
             if (graph.GetNode(roomId) != null) continue;
- 
+     
             // ── FIX BUG 2: i corridoi nel grafo si chiamano {id}_A e {id}_B ──
             // Un corridoio nel BuildingGraph si chiama es. "corridoio1",
             // ma nel TopologicalGraph esiste come "corridoio1_A" e "corridoio1_B".
             // Se almeno il polo A è presente, il corridoio è stato attraversato.
-           var poleANode = graph.GetCorridorPoleNode($"{roomId}_A");
+            var poleANode = graph.GetCorridorPoleNode($"{roomId}_A");
             if (poleANode != null)
             {
                 var centralEdge = poleANode.edges?.Find(e => e?.id == $"central_{roomId}");
-                if (centralEdge != null && centralEdge.state == EdgeState.Explored)
+                if (centralEdge is { state: EdgeState.Explored })
                     continue;
 
                 // FIX: considera completato anche se entrambi i poli sono fisicamente visitati
                 var poleBNode = graph.GetNode($"{roomId}_B");
-                if (poleANode.physicallyVisited && poleBNode != null && poleBNode.physicallyVisited)
+                if (poleANode.physicallyVisited && poleBNode is { physicallyVisited: true })
                 {
                     Debug.Log($"[ExplMgr] '{roomId}' — entrambi i poli visitati, considero completato.");
                     continue;
                 }
 
                 Debug.Log($"[ExplMgr] Piano {currentFloor}: '{roomId}' ha polo ma transito non completato.");
-                return false;
             }
-            
+                
+            Debug.LogWarning("[ExplMgr] Floor has unexplored Rooms.");
             return false;
         }
+
+        return true;
     }
- 
-    return true;
-}
+    
     private Vector3 GetRoomCenter(GameObject roomObj)
-{
-    if (roomObj == null) return Vector3.zero;
-
-    var col = roomObj.GetComponentInChildren<Collider>();
-    if (col != null) return col.bounds.center;
-
-    var rend = roomObj.GetComponentInChildren<Renderer>();
-    if (rend != null) return rend.bounds.center;
-
-    return roomObj.transform.position;
-}
-
-    private void NavigateToUnexploredCorridor(FloorNode floorData)
     {
-        if (floorData != null)
+        if (roomObj == null) return Vector3.zero;
+
+        var col = roomObj.GetComponentInChildren<Collider>();
+        if (col != null) return col.bounds.center;
+
+        var rend = roomObj.GetComponentInChildren<Renderer>();
+        if (rend != null) return rend.bounds.center;
+
+        return roomObj.transform.position;
+    }
+    
+    // REFACTOR: extracted methods
+
+    private bool HasRoomAlreadyBeenExplored(string roomId)
+    {
+        // Skip se la porta fisica verso questa stanza è già stata esplorata (anche con nome nodo diverso)
+        string doorCheck = FindDoorBetweenNodes(currentNodeId, roomId);
+        if (!string.IsNullOrEmpty(doorCheck))
         {
-            foreach (string roomId in floorData.roomIds)
+            var currNode = graph.GetNode(currentNodeId);
+            if (currNode != null && currNode.edges.Exists(e =>
+                    e?.id == doorCheck && e.state == EdgeState.Explored))
+                return true;
+        }
+        var poleANodeNav = graph.GetCorridorPoleNode($"{roomId}_A");
+        if (poleANodeNav != null)
+        {
+            var centralEdgeNav = poleANodeNav.edges?.Find(e => e?.id == $"central_{roomId}");
+            if (centralEdgeNav != null && centralEdgeNav.state == EdgeState.Explored)
+                return true; // davvero già transitato
+            // altrimenti cade giù e NavigateToUnexploredCorridor lo naviga normalmente
+        }
+
+        return false;
+    }
+
+    private void SetMovingToPole(string roomId, CorridorData corridorData)
+    {
+        float d1 = Vector3.Distance(transform.position, corridorData.Pole1Position);
+        float d2 = Vector3.Distance(transform.position, corridorData.Pole2Position);
+        pendingCorridorId      = roomId;
+        pendingPoleId          = d1 <= d2 ? "1" : "2";
+        pendingPolePos         = d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position;
+        movingToPoleCorridorId = roomId;
+        movingToPoleTimer      = 0f;
+        navAgent.isStopped     = false;
+        navAgent.SetDestination(pendingPolePos);
+        state = State.MovingToPole;
+    }
+
+    private void CreateEdgeWithPreviousRoom(string roomId, Vector3 center)
+    {
+        var prevNode = graph.GetNode(currentNodeId);
+        if (prevNode != null)
+        {
+            bool alreadyLinked = prevNode.edges.Exists(e => e != null && e.toNodeId == roomId);
+            if (!alreadyLinked)
             {
-                if (graph.GetNode(roomId) != null) continue;
-                // Skip se la porta fisica verso questa stanza è già stata esplorata (anche con nome nodo diverso)
-                string doorCheck = FindDoorBetweenNodes(currentNodeId, roomId);
-                if (!string.IsNullOrEmpty(doorCheck))
-                {
-                    var currNode = graph.GetNode(currentNodeId);
-                    if (currNode != null && currNode.edges.Exists(e =>
-                        e?.id == doorCheck && e.state == EdgeState.Explored))
-                        continue;
-                }
-                var poleANodeNav = graph.GetCorridorPoleNode($"{roomId}_A");
-                if (poleANodeNav != null)
-                {
-                    var centralEdgeNav = poleANodeNav.edges?.Find(e => e?.id == $"central_{roomId}");
-                    if (centralEdgeNav != null && centralEdgeNav.state == EdgeState.Explored)
-                        continue; // davvero già transitato
-                    // altrimenti cade giù e NavigateToUnexploredCorridor lo naviga normalmente
-                }
-
-                var roomObj = FindRoom(roomId, floorData);
-                if (roomObj == null) continue;
-
-                // FIX Bug 2: se è un corridoio, usa MovingToPole invece di EnteringRoom
-                var corridorData = FindCorridorData(roomId);
-                if (corridorData != null)
-                {
-                    float d1 = Vector3.Distance(transform.position, corridorData.Pole1Position);
-                    float d2 = Vector3.Distance(transform.position, corridorData.Pole2Position);
-                    pendingCorridorId      = roomId;
-                    pendingPoleId          = d1 <= d2 ? "1" : "2";
-                    pendingPolePos         = d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position;
-                    movingToPoleCorridorId = roomId;
-                    movingToPoleTimer      = 0f;
-                    navAgent.isStopped     = false;
-                    navAgent.SetDestination(pendingPolePos);
-                    state = State.MovingToPole;
-                    return;
-                }
-
-                Vector3 center = GetRoomCenter(roomObj);
-                graph.AddRoomNode(roomId,center);
-                graph.EnterNode(roomId);
-                var prevNode = graph.GetNode(currentNodeId);
-                bool alreadyLinked = prevNode != null && prevNode.edges.Exists(e => e != null && e.toNodeId == roomId);
-                if (!alreadyLinked && prevNode != null)
-                {
-                    float dist = Vector3.Distance(prevNode.position, center);
+                float dist = Vector3.Distance(prevNode.position, center);
                 // Trova la porta fisica più vicina al nodo connettore corrente
                 string synDoorName = FindDoorBetweenNodes(currentNodeId, roomId);
                 if (string.IsNullOrEmpty(synDoorName))
@@ -1755,19 +1748,54 @@ private bool IsCurrentFloorFullyExplored(FloorNode floorData)
                 var synEdge = graph.AddRoomDoorEdge(currentNodeId, synDoorName,
                     false, center, dist, roomId);
                 if (synEdge != null)
-                    graph.MarkEdgeExplored(currentNodeId, synEdge.id, roomId);                }
-                foreach (var node in graph.AllNodes())
+                    graph.MarkEdgeExplored(currentNodeId, synEdge.id, roomId);
+            }
+        }
+    }
+
+    private void UpdateEdgeId(string roomId)
+    {
+        foreach (var node in graph.AllNodes())
+        {
+            if (node == null) continue;
+            foreach (var edge in node.edges)
+            {
+                if (edge != null && edge.toNodeId == node.id && edge.state == EdgeState.Explored)
                 {
-                    if (node == null) continue;
-                    foreach (var edge in node.edges)
-                    {
-                        if (edge != null && edge.toNodeId == node.id && edge.state == EdgeState.Explored)
-                        {
-                            edge.toNodeId = roomId;
-                            Debug.Log($"[ExplMgr] Arco {node.id}→{edge.id} corretto: toNodeId aggiornato a '{roomId}'");
-                        }
-                    }
+                    edge.toNodeId = roomId;
+                    Debug.Log($"[ExplMgr] Arco {node.id}→{edge.id} corretto: toNodeId aggiornato a '{roomId}'");
                 }
+            }
+        }
+    }
+
+    private bool CheckForRoomExistenceAndStatus(string roomId, GameObject roomObj) => 
+        graph.GetNode(roomId) != null || HasRoomAlreadyBeenExplored(roomId) || roomObj == null;
+
+    private void NavigateToUnexploredCorridor(FloorNode floorData)
+    {
+        if (floorData != null)
+        {
+            foreach (string roomId in floorData.roomIds)
+            {
+                var roomObj = FindRoom(roomId, floorData);
+                
+                if (CheckForRoomExistenceAndStatus(roomId, roomObj)) continue;
+
+                // se è un corridoio, usa MovingToPole invece di EnteringRoom
+                var corridorData = FindCorridorData(roomId);
+                if (corridorData != null)
+                {
+                    SetMovingToPole(roomId, corridorData);
+                    return;
+                }
+
+                Vector3 center = GetRoomCenter(roomObj);
+                graph.AddRoomNode(roomId,center);
+                graph.EnterNode(roomId);
+                CreateEdgeWithPreviousRoom(roomId, center);
+
+                UpdateEdgeId(roomId);
                 currentNodeId = roomId;
                 navAgent.isStopped = false;
                 navAgent.SetDestination(center);
