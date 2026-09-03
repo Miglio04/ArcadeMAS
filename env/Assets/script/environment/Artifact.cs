@@ -28,7 +28,7 @@ public class Artifact : AbstractArtifact
     private Renderer objectRenderer;
     // Token/price UI belongs to token-machine subclasses; declared there.
     protected ArtifactMessage lastArtifactMessage;
-
+    
     private void OnValidate()
     {
         ResolveProperties();
@@ -169,6 +169,20 @@ public class Artifact : AbstractArtifact
     protected virtual void HandleTriggeredEvent(ArtifactMessage message)
     {
         lastArtifactMessage = message;
+        string owner = null;
+        
+        var paramObject = lastArtifactMessage.Param as JObject ?? JObject.FromObject(lastArtifactMessage.Param);
+        owner = paramObject["owner"]?.Value<string>();
+
+        // Enable or disable interactables based on ownership
+        var interactables = GetComponentsInChildren<XRSimpleInteractable>(true);
+        var canBeInteractedWith = string.IsNullOrEmpty(owner) || owner == "user";
+
+        foreach (var interactable in interactables)
+        {
+            interactable.enabled = canBeInteractedWith;
+        }
+        
         // Default: no-op. Derived classes implement event-specific logic.
     }
 

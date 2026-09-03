@@ -12,7 +12,7 @@ public class TokenMachineScript : Artifact
     private TextMeshProUGUI priceScreenText;
     protected override void HandleTriggeredEvent(ArtifactMessage message)
     {
-        lastArtifactMessage = message;
+        base.HandleTriggeredEvent(message);
         switch (message.AgentEvent)
         {
             case "pay":

@@ -57,8 +57,6 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
         execInternalOp("signalAgentsByTick");
         signal("available", true);
         
-        notifyUnityAction(STOP_GAME_ACTION, Map.of(OWNER_PROPERTY, owner));
-        
         if (waitList.isEmpty()) {
             getObsProperty(OWNER_PROPERTY).updateValue("");
             writeLog("No agents waiting, owner cleared");
@@ -68,9 +66,10 @@ public class SinglePlayerGameArtifact extends AbstractMasElementArtifact {
             signalAgent(nextAgent, ACCESS_GRANTED_ACTION, normalizedArtifactName());
             writeLog("Granted access to " + nextAgent + ", remaining queue=" + waitList);
         }
+        notifyUnityAction(STOP_GAME_ACTION, Map.of(OWNER_PROPERTY, getObsProperty(OWNER_PROPERTY).getValue()));
     }
 
-    private void notifyUnityAction(String actionName, Map<String, String> params) {
+    private void notifyUnityAction(String actionName, Map<String, Object> params) {
         WsMessage wsMessage = new WsMessage();
         wsMessage.setMessageType("artifactAction");
         wsMessage.setMessagePayload("triggered");

@@ -6,7 +6,7 @@ public class SinglePlayerGameScript : Artifact
 {
     protected override void HandleTriggeredEvent(ArtifactMessage message)
     {
-        lastArtifactMessage = message;
+        base.HandleTriggeredEvent(message);
         switch (message.AgentEvent)
         {
             case "playGame":
