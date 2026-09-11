@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
+using script.avatar.ExplorationHelpers;
 using UnityEngine;
 using UnityEditor;
 
@@ -73,6 +74,7 @@ public class TopologicalGraphWindow : EditorWindow
 
     // ── Riferimento manager ──────────────────────────────────
     private ExplorationManager manager;
+    private ExplorationData expData;
     private TopologicalGraph   lastGraph;
     private int                lastNodeCount = 0;
 
@@ -111,6 +113,9 @@ public class TopologicalGraphWindow : EditorWindow
         if (manager == null)
             manager = FindFirstObjectByType<ExplorationManager>();
 
+        if (expData == null)
+            expData = FindObjectOfType<ExplorationData>();
+        
         var graph = GetGraph();
 
         // ── Sfondo ──
@@ -642,9 +647,9 @@ public class TopologicalGraphWindow : EditorWindow
         layoutDirty = true;
 
     // ── Dropdown piani disponibili ──────────────────────────
-    if (manager != null && Application.isPlaying && manager.AllFloorGraphs.Count > 0)
+    if (manager != null && Application.isPlaying && expData.AllFloorGraphs.Count > 0)
     {
-        var floorKeys = new List<int>(manager.AllFloorGraphs.Keys);
+        var floorKeys = new List<int>(expData.AllFloorGraphs.Keys);
         floorKeys.Sort();
 
         // Costruisci le label: "Piano 0", "Piano 1", ...
@@ -717,17 +722,17 @@ public class TopologicalGraphWindow : EditorWindow
         if (manager == null || !Application.isPlaying) return null;
         
         // Se -1 o il piano selezionato non esiste più, usa il piano corrente
-        if (selectedFloor == -1 || !manager.AllFloorGraphs.ContainsKey(selectedFloor))
-            return manager.Graph;
+        if (selectedFloor == -1 || !expData.AllFloorGraphs.ContainsKey(selectedFloor))
+            return expData.Graph;
         
-        manager.AllFloorGraphs.TryGetValue(selectedFloor, out var g);
+        expData.AllFloorGraphs.TryGetValue(selectedFloor, out var g);
         return g;
     }
 
         private string GetCurrentNodeId()
     {
         if (manager == null) return null;
-        return manager.CurrentNodeId;
+        return expData.CurrentNodeId;
     }
 
     private int CountNodes(TopologicalGraph g)

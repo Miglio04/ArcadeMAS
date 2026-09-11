@@ -5,6 +5,7 @@ using System.Collections;
 using System.Data;
 using System.Linq;
 using JetBrains.Annotations;
+using script.avatar.ExplorationHelpers;
 
 // ============================================================
 // ExplorationManager.cs  — v2.4
@@ -44,132 +45,49 @@ public struct FloorConnectorLink
 
 // ─────────────────────────────────────────────────────────────
 
+[RequireComponent(typeof(ExplorationData))]
+[RequireComponent(typeof(StateMachine))]
 public class ExplorationManager : MonoBehaviour
 {
-    [Header("Agente")]
-    public NavMeshAgent          navAgent;
-    public ExplorationVisionCone explorationVisionCone;
-
-    [Header("Macro-Grafo edificio")]
-    public BuildingGraph buildingGraph;
-
-
-    [Header("Impostazioni")]
-
-    public float arrivalThreshold      = 0.5f;
-    public float poleArrivalThreshold  = 1.2f;
-    public float rotationSpeed         = 120f;
-    public float inspectionDistance    = 1.2f;
-    public float enterOffset           = 1.5f;
-    public float poleTimeoutSeconds    = 4f;
-
-    [Header("Persistenza")]
-    public string buildingId = "building";  // es. "PalazzoRossi_P1"
-
-    [ContextMenu("Apri cartella snapshot")]
-    private void OpenSnapshotFolder()
-    {
-        System.Diagnostics.Process.Start(GraphPersistence.BaseDirectory);
-    }
-
-    // --------------------------------------------------------
-    // MACCHINA A STATI
-    // --------------------------------------------------------
-    private enum State
-    {
-        Idle, MovingToPole, Transiting, WaitingAtPoleB,
-        Rotating360, MovingToDoor, InspectingDoor,
-        EnteringRoom, InsideRoom, Backtracking,
-        MovingToConnector, Completed, TraversingStairs
-    }
-
-    private State state = State.Idle;
-
-    // ─────────────────────────────────────────────────────────
-    // MULTI-GRAFO: un TopologicalGraph per piano
-    // ─────────────────────────────────────────────────────────
-    private Dictionary<int, TopologicalGraph> floorGraphs
-        = new Dictionary<int, TopologicalGraph>();
-
-    /// <summary>Grafo del piano corrente (proprietà calcolata).</summary>
-    private TopologicalGraph graph
-        => floorGraphs.TryGetValue(currentFloor, out var g) ? g : null;
-
-    /// <summary>Tutti i grafi, accessibili da BeliefTransmitter.</summary>
-    public Dictionary<int, TopologicalGraph> AllFloorGraphs => floorGraphs;
-
-    /// <summary>
-    /// Link cross-floor: descrive come il nodo conn_X nel grafo pianoA si
-    /// collega al nodo conn_X nel grafo pianoB. Usato da BeliefTransmitter
-    /// per ricostruire il grafo completo dell'edificio.
-    /// </summary>
-    public List<FloorConnectorLink> ConnectorLinks { get; }
-        = new List<FloorConnectorLink>();
-
-    // Alias pubblico per retrocompatibilità
-    public TopologicalGraph Graph => graph;
-
-    private string currentNodeId;
-    public  string CurrentNodeId => currentNodeId;
-
-    private string  transitCorridorId;
-    private Vector3 poleAPos;
-    private Vector3 poleBPos;
-
-    private string  pendingCorridorId;
-    private string  pendingPoleId;
-    private Vector3 pendingPolePos;
-
-    private GraphEdge currentEdge;
-
-    private float rotationAccum = 0f;
-    public  bool  inRoomMode   = false;
 
     private Dictionary<string, string> registeredRoomDoors = new Dictionary<string, string>();
     private HashSet<string> registeredTransitDoors = new HashSet<string>();
-    private HashSet<string> allCorridorDoors       = new HashSet<string>();
-
+    private HashSet<string> allCorridorDoors = new HashSet<string>();
+    
     private bool explorationStarted = false;
-    public int  currentFloor;
-
+    
     private string lastCorridorLinkDoorName;
-    private VerticalConnector pendingConnector;
-
+    
     private DoorVarcoScript pendingArrivalDoor = null;
-
-    private HashSet<string>   traversedConnectors = new HashSet<string>();
+    
+    private HashSet<string> traversedConnectors = new HashSet<string>();
 
     private Dictionary<string, HashSet<string>> _roomArtifacts
-    = new Dictionary<string, HashSet<string>>();
-private Dictionary<string, RoomObjectSnapshot> _artifactData
-    = new Dictionary<string, RoomObjectSnapshot>();
+        = new Dictionary<string, HashSet<string>>();
 
-    private string movingToPoleCorridorId;
-    private float  movingToPoleTimer = 0f;
-    private float  backtrackTimer    = 0f;
-    public  float  backtrackTimeout  = 5f;
+    private Dictionary<string, RoomObjectSnapshot> _artifactData
+        = new Dictionary<string, RoomObjectSnapshot>();
+    
+    private ExplorationData expData;
 
-    private float transitTimer = 0f;
+    private StateMachine stateMachine;
 
-    private float idleTimer = 0f;
+    private NavMeshAgent navAgent;
+    
 
-    // Corridoio verso cui l'agente sta navigando in stato Idle
-    // (dopo EnterThroughEdge su un varco corridoio). Blocca segnali
-    // di poli di altri corridoi finché non si tocca il polo corretto.
-    private string idleTargetCorridorId;
-
+    
     // --------------------------------------------------------
     // EVENTI
     // --------------------------------------------------------
     void Awake()
     {
-        if (buildingGraph != null)
-            foreach (var floor in buildingGraph.floors)
-                floor.explored = false;
-
-        CorridorPoleScript.OnPoleTouched            += HandlePoleTouched;
+        expData = GetComponent<ExplorationData>();
+        stateMachine = GetComponent<StateMachine>();
+        navAgent = GetComponent<NavMeshAgent>();
+        
+        CorridorPoleScript.OnPoleTouched            += stateMachine.HandlePoleTouched;
         ExplorationVisionCone.OnDoorDiscovered      += HandleDoorDiscovered;
-        ExplorationVisionCone.OnCorridorPoleVisible += HandleCorridorPoleVisible;
+        ExplorationVisionCone.OnCorridorPoleVisible += stateMachine.HandleCorridorPoleVisible;
         ExplorationVisionCone.OnDoorVisibleInRoom   += HandleDoorVisibleInRoom;
         VerticalConnectorScript.OnConnectorReached  += HandleConnectorReached;
         
@@ -177,9 +95,9 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     void OnDestroy()
     {
-        CorridorPoleScript.OnPoleTouched            -= HandlePoleTouched;
+        CorridorPoleScript.OnPoleTouched            -= stateMachine.HandlePoleTouched;
         ExplorationVisionCone.OnDoorDiscovered      -= HandleDoorDiscovered;
-        ExplorationVisionCone.OnCorridorPoleVisible -= HandleCorridorPoleVisible;
+        ExplorationVisionCone.OnCorridorPoleVisible -= stateMachine.HandleCorridorPoleVisible;
         ExplorationVisionCone.OnDoorVisibleInRoom   -= HandleDoorVisibleInRoom;
         VerticalConnectorScript.OnConnectorReached  -= HandleConnectorReached;
         
@@ -188,11 +106,11 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // REFACTOR: EXTRACTED METHODS
     // --------------------------------------------------------
 
-    private bool CheckAndSaveDoor(DoorVarcoScript door)
+    private bool CheckAndMakeRoomRegistration(DoorVarcoScript door)
     {
         if  (!registeredRoomDoors.ContainsKey(door.gameObject.name))
         {
-            registeredRoomDoors[door.gameObject.name] = currentNodeId;
+            registeredRoomDoors[door.gameObject.name] = expData.currentNodeId;
             return false;
         }
         return true;
@@ -201,11 +119,11 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     [CanBeNull] private static GameObject FindRoom(string roomId, [CanBeNull] FloorNode fd) => 
         fd?.roomObjects.Find(r => r != null && r.name == roomId);
 
-    private void ComputeCorridorOrders(string corridorId)
+    public void ComputeCorridorOrders(string corridorId)
     {
-        graph.ComputeForwardOrders(corridorId);
-        graph.ComputeBackwardOrders(corridorId);
-        graph.ComputeExplorationOrder(corridorId);
+        expData.graph.ComputeForwardOrders(corridorId);
+        expData.graph.ComputeBackwardOrders(corridorId);
+        expData.graph.ComputeExplorationOrder(corridorId);
     }
 
     // --------------------------------------------------------
@@ -213,20 +131,20 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // --------------------------------------------------------
     void Start()
     {
-        if (buildingGraph == null)
+        if (expData.buildingGraph == null)
         {
             Debug.LogWarning("[ExplMgr] BuildingGraph non assegnato!");
             return;
         }
     
         // ── Controlla se esiste già uno snapshot su disco ────────
-        if (GraphPersistence.Exists(buildingId))
+        if (GraphPersistence.Exists(expData.buildingId))
         {
-            BuildingSnapshot snapshot = GraphPersistence.Load(buildingId);
+            BuildingSnapshot snapshot = GraphPersistence.Load(expData.buildingId);
     
             if (snapshot != null)
             {
-                Debug.Log($"[ExplMgr] Snapshot trovato per '{buildingId}': " +
+                Debug.Log($"[ExplMgr] Snapshot trovato per '{expData.buildingId}': " +
                         $"trasmissione diretta a JaCaMo, esplorazione saltata.");
     
                 var bt = GetComponent<BeliefTransmitter>();
@@ -234,12 +152,12 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     
                 // Metti la macchina a stati in Completed:
                 // l'agente resta fermo, JaCaMo ha già tutto.
-                state = State.Completed;
+                stateMachine.SetState(State.Completed);
                 return;
             }
 
             // File corrotto o illeggibile: procedi con esplorazione normale
-            Debug.LogWarning($"[ExplMgr] Snapshot corrotto per '{buildingId}': riesplorazione.");
+            Debug.LogWarning($"[ExplMgr] Snapshot corrotto per '{expData.buildingId}': riesplorazione.");
         }
     
         
@@ -247,7 +165,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         FloorNode floorData = PrepareExploration();
         if (floorData == null) return;
     
-        currentFloor = floorData.floorIndex;
+        expData.currentFloor = floorData.floorIndex;
         StartExploration(floorData.spawnObject.name, floorData.spawnPosition);
     }
 
@@ -255,14 +173,14 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     
     private FloorNode PrepareExploration()
     {
-        foreach (var floor in buildingGraph.floors)
+        foreach (var floor in expData.buildingGraph.floors)
             floor.explored = false;
     
         Vector3   agentPos  = navAgent.transform.position;
         FloorNode floorData = null;
         float     minDist   = float.MaxValue;
     
-        foreach (var floor in buildingGraph.floors)
+        foreach (var floor in expData.buildingGraph.floors)
         {
             foreach (var room in floor.roomObjects)
             {
@@ -299,15 +217,15 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         explorationStarted = true;
      
 
-        Debug.Log($"[ExplMgr] Piano di partenza: {currentFloor}");
+        Debug.Log($"[ExplMgr] Piano di partenza: {expData.currentFloor}");
      
         // Crea il grafo per il piano iniziale
-        floorGraphs[currentFloor] = new TopologicalGraph();
+        expData.floorGraphs[expData.currentFloor] = new TopologicalGraph();
      
-        explorationVisionCone?.SetExplorationMode(true);
-        currentNodeId = startNodeId;
-        CorridorPoleScript.OnPoleTouched -= HandlePoleTouched;
-        CorridorPoleScript.OnPoleTouched += HandlePoleTouched;
+        expData.explorationVisionCone?.SetExplorationMode(true);
+        expData.currentNodeId = startNodeId;
+        CorridorPoleScript.OnPoleTouched -= stateMachine.HandlePoleTouched;
+        CorridorPoleScript.OnPoleTouched += stateMachine.HandlePoleTouched;
 
         // WARN: questo metodo può essere estratto?
         var spawnCorridor = FindCorridorData(startNodeId);
@@ -315,87 +233,57 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         {
             // Spawn in un corridoio: non creare un room node,
             // vai direttamente al polo più vicino
-            float d1 = Vector3.Distance(startPos, spawnCorridor.Pole1Position);
-            float d2 = Vector3.Distance(startPos, spawnCorridor.Pole2Position);
-            pendingCorridorId      = startNodeId;
-            pendingPoleId          = d1 <= d2 ? "1" : "2";
-            pendingPolePos         = d1 <= d2 ? spawnCorridor.Pole1Position : spawnCorridor.Pole2Position;
-            movingToPoleCorridorId = startNodeId;
-            movingToPoleTimer      = 0f;
-            navAgent.isStopped     = false;
-            navAgent.SetDestination(pendingPolePos);
-            state = State.MovingToPole;
+            BeginMovingToPole(startPos, startNodeId, spawnCorridor);
         }
         else
         {
-            graph.AddRoomNode(startNodeId, startPos);
-            graph.EnterNode(startNodeId);
+            expData.graph.AddRoomNode(startNodeId, startPos);
+            expData.graph.EnterNode(startNodeId);
             StartRotation360(isRoom: true);
         }
 
-        Debug.Log($"[ExplMgr] Avviato da '{startNodeId}' piano {currentFloor}");
+        Debug.Log($"[ExplMgr] Avviato da '{startNodeId}' piano {expData.currentFloor}");
     }
 
-    // --------------------------------------------------------
-    // UPDATE
-    // --------------------------------------------------------
-    void Update()
-    {
-        // WARN: con la mappa è più facile da leggere e più veloce, se voglio aggiungere altri metodi in futuro
-        switch (state)
-        {
-            case State.MovingToPole:      UpdateMovingToPole();      break;
-            case State.Transiting:        UpdateTransiting();        break;
-            case State.Rotating360:       UpdateRotating360();       break;
-            case State.MovingToDoor:      UpdateMovingToDoor();      break;
-            case State.InspectingDoor:    UpdateInspectingDoor();    break;
-            case State.EnteringRoom:      UpdateEnteringRoom();      break;
-            case State.InsideRoom:        UpdateInsideRoom();        break;
-            case State.Idle:          UpdateIdle();          break;
-            case State.Backtracking:  UpdateBacktracking();  break;
-            case State.MovingToConnector: UpdateMovingToConnector(); break;
-        }
-    }
+    
     
     // --------------------------------------------------------
     // REFACTOR HANDLERS POLE TOUCHED
     // --------------------------------------------------------
-
-    private void PoleTouchedWhileTransiting(string corridorId, string poleId, Vector3 polePos)
-    {
-        // Ignora segnali di polo se siamo ancora vicini al polo A:
-        // significa che è un polo diverso da B che ha fatto scattare il trigger
-        // prima che l'agente si sia davvero avvicinato a B.
-        // WARN: qua è molto simile a sopra, magari si può fare qualche piccolo cambiamento nella logica,
-        // ed abbiamo già estratto un metodo.
-        float distToB = Vector3.Distance(transform.position, poleBPos);
-        float distToA = Vector3.Distance(transform.position, poleAPos);
-        if (distToA < distToB && distToB > poleArrivalThreshold)
+    
+    public void PoleTouchedWhileTransiting(string corridorId, string poleId, Vector3 polePos)
         {
-            return;
+            // Ignora segnali di polo se siamo ancora vicini al polo A:
+            // significa che è un polo diverso da B che ha fatto scattare il trigger
+            // prima che l'agente si sia davvero avvicinato a B.
+            // WARN: qua è molto simile a sopra, magari si può fare qualche piccolo cambiamento nella logica,
+            // ed abbiamo già estratto un metodo.
+            float distToB = Vector3.Distance(transform.position, expData.poleBPos);
+            float distToA = Vector3.Distance(transform.position, expData.poleAPos);
+            if (distToA < distToB && distToB > expData.poleArrivalThreshold)
+            {
+                return;
+            }
+            expData.SetPendingCorridorAndPole(corridorId, poleId, polePos);
+            ProcessPoleTouched();
         }
-        pendingCorridorId = corridorId;
-        pendingPoleId     = poleId;
-        pendingPolePos    = polePos;
-        ProcessPoleTouched();
-    }
 
     private bool HandleAlreadyExploredPole(CorridorPoleNode poleANode, string corridorId, string poleId)
     {
         var central = poleANode.edges.Find(e => e?.id == $"central_{corridorId}");
         if (central is { state: EdgeState.Explored })
         {
-            if (!string.IsNullOrEmpty(currentNodeId) &&
-                (currentNodeId.EndsWith("_A") || currentNodeId.EndsWith("_B")))
+            if (!string.IsNullOrEmpty(expData.currentNodeId) &&
+                (expData.currentNodeId.EndsWith("_A") || expData.currentNodeId.EndsWith("_B")))
             {
                 string poleAId = $"{corridorId}_A";
                 string poleBId = $"{corridorId}_B";
                 Vector3 doorPos = transform.position;
-                float distToA = Vector3.Distance(doorPos, graph.GetNode(poleAId)?.position ?? doorPos);
-                float distToB = Vector3.Distance(doorPos, graph.GetNode(poleBId)?.position ?? doorPos);
+                float distToA = Vector3.Distance(doorPos, expData.graph.GetNode(poleAId)?.position ?? doorPos);
+                float distToB = Vector3.Distance(doorPos, expData.graph.GetNode(poleBId)?.position ?? doorPos);
                 string nearestTo = distToA <= distToB ? poleAId : poleBId;
-                graph.AddSegmentArc(currentNodeId, nearestTo,
-                    Vector3.Distance(transform.position, graph.GetNode(nearestTo)?.position ?? transform.position));
+                expData.graph.AddSegmentArc(expData.currentNodeId, nearestTo,
+                    Vector3.Distance(transform.position, expData.graph.GetNode(nearestTo)?.position ?? transform.position));
             }
 
             Debug.Log($"[ExplMgr] Polo {corridorId}_{poleId} ignorato — corridoio già transitato.");
@@ -404,13 +292,13 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
         return false;
     }
-
-    private void PoleTouchedWhileIdle(string corridorId, string poleId, Vector3 polePos)
+        
+    public void PoleTouchedWhileIdle(string corridorId, string poleId, Vector3 polePos)
     {
-        if (string.IsNullOrEmpty(idleTargetCorridorId)) return;
+        if (string.IsNullOrEmpty(expData.idleTargetCorridorId)) return;
         // Se stiamo navigando verso un corridoio specifico (idleTargetCorridorId),
         // ignora segnali di polo di altri corridoi per non interrompere il tragitto.
-        if (corridorId != idleTargetCorridorId)
+        if (corridorId != expData.idleTargetCorridorId)
         {
             ResetCorridorPoles(corridorId);
             return;
@@ -419,86 +307,32 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         // Salta il check "già transitato" se ci stiamo andando intenzionalmente:
         // il corridoio può avere ancora porte da esplorare anche se il transito
         // centrale è già marcato come esplorato.
-        var poleANode = graph.GetCorridorPoleNode($"{corridorId}_A");
+        var poleANode = expData.graph.GetCorridorPoleNode($"{corridorId}_A");
         if (poleANode != null && !HandleAlreadyExploredPole(poleANode, corridorId, poleId)) return;
         // Corridoio corretto raggiunto: pulisci il target idle
-        idleTargetCorridorId = null;
-        pendingCorridorId = corridorId;
-        pendingPoleId     = poleId;
-        pendingPolePos    = polePos;
+        expData.idleTargetCorridorId = null;
+        expData.SetPendingCorridorAndPole(corridorId, poleId, polePos);
         ProcessPoleTouched();
     }
-    
 
-    // --------------------------------------------------------
-    // HANDLER: VisionCone vede un polo di corridoio
-    // --------------------------------------------------------
-    private void HandleCorridorPoleVisible(string corridorId, string poleId, Vector3 polePos)
+  public void ProcessPoleTouched()
     {
-        // WARN: a cosa servono queste prime 2 linee?
-        if (state == State.MovingToPole || state == State.Transiting) return;
-        if (state == State.Rotating360) return;
-        if (state != State.Idle && state != State.Backtracking) return;
-        if (!string.IsNullOrEmpty(idleTargetCorridorId) && corridorId != idleTargetCorridorId) return;
-
-        var corridorData = FindCorridorData(corridorId);
+        var corridorData = FindCorridorData(expData.pendingCorridorId);
         if (corridorData == null) return;
 
-        // WARN: Posso estrarre metodo e riusarlo nel codice?
-        Vector3 myPos   = transform.position;
-        float distPole1 = Vector3.Distance(myPos, corridorData.Pole1Position);
-        float distPole2 = Vector3.Distance(myPos, corridorData.Pole2Position);
+        bool isFirstPole = (!stateMachine.IsState(State.Transiting));
 
-        Vector3 nearestPolePos;
-        string  nearestPoleId;
-        if (distPole1 <= distPole2)
-        { nearestPolePos = corridorData.Pole1Position; nearestPoleId = "1"; }
+        if (isFirstPole)
+        {
+            TouchedFirstPole(corridorData);
+        }
         else
-        { nearestPolePos = corridorData.Pole2Position; nearestPoleId = "2"; }
-
-        if (movingToPoleCorridorId == corridorId) return;
-
-        pendingCorridorId      = corridorId;
-        pendingPoleId          = nearestPoleId;
-        pendingPolePos         = nearestPolePos;
-        movingToPoleCorridorId = corridorId;
-
-        navAgent.isStopped = false;
-        navAgent.SetDestination(nearestPolePos);
-        movingToPoleTimer = 0f;
-
-        state = State.MovingToPole;
-
-        Debug.Log($"[ExplMgr] Polo {corridorId}/{nearestPoleId} individuato → mi avvicino.");
-    }
-
-    // --------------------------------------------------------
-    // HANDLER: Polo fisicamente toccato
-    // --------------------------------------------------------
-    private void HandlePoleTouched(string corridorId, string poleId, Vector3 polePos)
-    {
-        Debug.Log($"[ExplMgr] Segnale fisico da {corridorId}_{poleId}. Stato: {state}");
-
-       if (state == State.Transiting && corridorId == transitCorridorId)
         {
-            PoleTouchedWhileTransiting(corridorId, poleId, polePos);
-            return;
+            TouchedAnotherPole();
         }
 
-        if (state == State.MovingToPole && corridorId == pendingCorridorId)
-        {
-            pendingPolePos = polePos;
-            ProcessPoleTouched();
-            return;
-        }
-
-        if (state == State.Idle)
-        {
-            PoleTouchedWhileIdle(corridorId, poleId, polePos);
-            return;
-        }
-
-        ResetCorridorPoles(corridorId);
+        expData.pendingCorridorId = null;
+        expData.pendingPoleId     = null;
     }
 
     // --------------------------------------------------------
@@ -506,12 +340,12 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // --------------------------------------------------------
     private void HandleDoorDiscovered(DoorVarcoScript door, string corridorId, int orderFW)
     {
-        if (state != State.Transiting) return;
-        if (corridorId != transitCorridorId) return;
+        if (!stateMachine.IsState(State.Transiting)) return;
+        if (corridorId != expData.transitCorridorId) return;
         if (registeredTransitDoors.Contains(door.gameObject.name)) return;
         if (allCorridorDoors.Contains(door.gameObject.name)) return;
 
-        float corridorLength = Vector3.Distance(poleAPos, poleBPos);
+        float corridorLength = Vector3.Distance(expData.poleAPos, expData.poleBPos);
         if (door.distFromB > corridorLength + 0.6f && door.distFromA > corridorLength + 0.6f)
         {
             Debug.Log($"[ExplMgr] {door.gameObject.name} oltre il corridoio → ignorata");
@@ -527,14 +361,14 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         if (!isCorrLink) allCorridorDoors.Add(door.gameObject.name);
         
         string computedSide = ComputeSideRelativeToCorridorAxis(
-            door.transform.position, poleAPos, poleBPos);
+            door.transform.position, expData.poleAPos, expData.poleBPos);
         if (!isCorrLink)
         {
-            graph.AddDoorEdges(corridorId, door.gameObject.name,
+            expData.graph.AddDoorEdges(corridorId, door.gameObject.name,
             door.elementType == DoorVarcoScript.ElementType.Door,
             door.transform.position, computedSide,
             door.distFromA, door.distFromB,
-            isCorridorLink: isCorrLink);
+            isCorridorLink: false);
         }
         
 
@@ -557,15 +391,15 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     private string ReturnNearestRoomToDoor(DoorVarcoScript door, VerticalConnector connectorForDoor)
     {
-        var fd = buildingGraph?.GetFloor(currentFloor);
+        var fd = expData.buildingGraph?.GetFloor(expData.currentFloor);
         if (fd == null) return null;
         
         float minDist = float.MaxValue;
         string nearest = null;
         foreach (string roomId in fd.roomIds)
         {
-            if (roomId == currentNodeId || roomId == connectorForDoor.id) continue;
-            if (graph.GetNode(roomId) != null) continue; // già visitata
+            if (roomId == expData.currentNodeId || roomId == connectorForDoor.id) continue;
+            if (expData.graph.GetNode(roomId) != null) continue; // già visitata
             var rObj = FindRoom(roomId, fd);
             if (rObj == null) continue;
             float d = Vector3.Distance(door.transform.position, rObj.transform.position);
@@ -576,13 +410,13 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     }
 
     private bool IsRoomPointedByConnectorDoorInvalid(string connRoomBeyond, VerticalConnector connectorForDoor) => 
-        string.IsNullOrEmpty(connRoomBeyond) || connRoomBeyond == currentNodeId
+        string.IsNullOrEmpty(connRoomBeyond) || connRoomBeyond == expData.currentNodeId
                                              || connRoomBeyond == connectorForDoor.id;
 
     private void HandleDoorVisibleInConnectorAlreadyTransited(DoorVarcoScript door, VerticalConnector connectorForDoor)
     {
-        if (CheckAndSaveDoor(door)) return;
-        if (!traversedConnectors.Contains(currentNodeId))
+        if (CheckAndMakeRoomRegistration(door)) return;
+        if (!traversedConnectors.Contains(expData.currentNodeId))
             return;
 
         // Determina la stanza di destinazione
@@ -603,27 +437,27 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         string targetId = connRoomBeyond;
 
         // Aggiungi il nodo destinazione al grafo se non esiste ancora
-        if (graph.GetNode(targetId) == null)
+        if (expData.graph.GetNode(targetId) == null)
         {
-            var floorData = buildingGraph?.GetFloor(currentFloor);
+            var floorData = expData.buildingGraph?.GetFloor(expData.currentFloor);
             var roomObj   = FindRoom(targetId, floorData);
             if (roomObj != null)
-                graph.AddRoomNode(targetId, roomObj.transform.position);
+                expData.graph.AddRoomNode(targetId, roomObj.transform.position);
         }
 
-        if (graph.GetNode(targetId) == null) return; // nodo non trovabile, skip
+        if (expData.graph.GetNode(targetId) == null) return; // nodo non trovabile, skip
 
         float connNavDist = door.NavMeshDistanceTo(transform.position);
-        var edge = graph.AddRoomDoorEdge(currentNodeId, door.gameObject.name,
+        var edge = expData.graph.AddRoomDoorEdge(expData.currentNodeId, door.gameObject.name,
             door.elementType == DoorVarcoScript.ElementType.Door,
             door.transform.position, connNavDist, targetId);
 
         // Marca explored SOLO se la stanza è già stata visitata;
         // altrimenti resta Discovered → l'agente la raggiungerà via la porta.
-        var beyondNode = graph.GetNode(targetId);
+        var beyondNode = expData.graph.GetNode(targetId);
         bool targetVisited = beyondNode is { physicallyVisited: true };
         if (edge != null && targetVisited)
-            graph.MarkEdgeExplored(currentNodeId, edge.id, targetId);
+            expData.graph.MarkEdgeExplored(expData.currentNodeId, edge.id, targetId);
 
         Debug.Log($"[ExplMgr] Connettore '{door.gameObject.name}' già attraversato → " +
                   $"RoomDoor {(targetVisited ? "explored" : "discovered")} verso '{targetId}'.");
@@ -632,7 +466,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     private void HandleDoorVisibleInConnector(DoorVarcoScript door, VerticalConnector connectorForDoor)
     {
         string corridorBeyond = door.GetRoomNameBeyondDoor(transform.position);
-        if (!CheckAndSaveDoor(door))
+        if (!CheckAndMakeRoomRegistration(door))
         {
             if (!string.IsNullOrEmpty(corridorBeyond) && FindCorridorData(corridorBeyond) != null)
             {
@@ -652,7 +486,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         if (NavMesh.CalculatePath(transform.position, door.transform.position, NavMesh.AllAreas, path))
             for (int i = 1; i < path.corners.Length; i++)
                 corridorNavDist += Vector3.Distance(path.corners[i - 1], path.corners[i]);
-        graph.AddRoomDoorEdge(currentNodeId, door.gameObject.name,
+        expData.graph.AddRoomDoorEdge(expData.currentNodeId, door.gameObject.name,
             door.elementType == DoorVarcoScript.ElementType.Door,
             door.transform.position, corridorNavDist, corridorBeyond);
     }
@@ -667,37 +501,37 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         // WARN: metodo estraibile
         // Crea il nodo connettore nel grafo se non esiste ancora
         string connId2 = connectorForDoor?.id;
-        if (!string.IsNullOrEmpty(connId2) && graph.GetNode(connId2) == null)
+        if (!string.IsNullOrEmpty(connId2) && expData.graph.GetNode(connId2) == null)
         {
-            bool isRev3 = (connectorForDoor.floorFrom == currentFloor);
+            bool isRev3 = (connectorForDoor.floorFrom == expData.currentFloor);
             Vector3 connPos3 = isRev3
                 ? connectorForDoor.triggerEndPosition
                 : connectorForDoor.triggerStartPosition;
-            graph.AddRoomNode(connId2, connPos3);
+            expData.graph.AddRoomNode(connId2, connPos3);
         }
 
         // Arco currentNodeId→door→connettore, marcato explored (porta aperta = visitata)
         if (!string.IsNullOrEmpty(connId2))
         {
             float navDist2 = door.NavMeshDistanceTo(transform.position);
-            var edgeConn = graph.AddRoomDoorEdge(currentNodeId, door.gameObject.name,
+            var edgeConn = expData.graph.AddRoomDoorEdge(expData.currentNodeId, door.gameObject.name,
                 door.elementType == DoorVarcoScript.ElementType.Door,
                 door.transform.position, navDist2, connId2);
             if (edgeConn != null)
-                graph.MarkEdgeExplored(currentNodeId, edgeConn.id, connId2);
+                expData.graph.MarkEdgeExplored(expData.currentNodeId, edgeConn.id, connId2);
         }
 
-        Debug.Log($"[ExplMgr] Scala '{door.gameObject.name}' aperta da '{currentNodeId}' → '{connId2}' (non entro)");
+        Debug.Log($"[ExplMgr] Scala '{door.gameObject.name}' aperta da '{expData.currentNodeId}' → '{connId2}' (non entro)");
     }
 
     private void HandleCorridorDoor(DoorVarcoScript door)
     {
-        string corridorId = currentNodeId.Replace("_B", "");
+        string corridorId = expData.currentNodeId.Replace("_B", "");
 
         if (allCorridorDoors.Contains(door.gameObject.name)) return;
 
-        float dB = Vector3.Distance(door.transform.position, poleBPos);
-        float dA = Vector3.Distance(door.transform.position, poleAPos);
+        float dB = Vector3.Distance(door.transform.position, expData.poleBPos);
+        float dA = Vector3.Distance(door.transform.position, expData.poleAPos);
 
         if (dB > 0.6f && dA > 0.6)
         { Debug.Log($"[ExplMgr] {door.gameObject.name} fuori corridoio (dB={dB:F2}) → ignorata"); return; }
@@ -706,9 +540,9 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         allCorridorDoors.Add(door.gameObject.name);
 
         string computedSide = ComputeSideRelativeToCorridorAxis(
-            door.transform.position, poleAPos, poleBPos);
+            door.transform.position, expData.poleAPos, expData.poleBPos);
 
-        graph.AddDoorEdges(corridorId, door.gameObject.name,
+        expData.graph.AddDoorEdges(corridorId, door.gameObject.name,
             door.elementType == DoorVarcoScript.ElementType.Door,
             door.transform.position, computedSide, dA, dB);
 
@@ -725,13 +559,13 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         // La porta è accettata se:
         //   a) appartiene fisicamente a questa stanza (roomFront/roomBack)
         //   b) oppure il nodo corrente È il connettore stesso (es. scalaSolaio vede Door_Solaio2)
-        bool frontMatch     = door.roomFront != null && door.roomFront.name == currentNodeId;
-        bool backMatch      = door.roomBack  != null && door.roomBack.name  == currentNodeId;
-        bool connectorMatch = connectorForDoor != null && connectorForDoor.id == currentNodeId;
+        bool frontMatch     = door.roomFront != null && door.roomFront.name == expData.currentNodeId;
+        bool backMatch      = door.roomBack  != null && door.roomBack.name  == expData.currentNodeId;
+        bool connectorMatch = connectorForDoor != null && connectorForDoor.id == expData.currentNodeId;
 
         if (!frontMatch && !backMatch && !connectorMatch)
         {
-            CheckAndSaveDoor(door);
+            CheckAndMakeRoomRegistration(door);
             return;
         }
 
@@ -744,10 +578,10 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     private void HandleNonConnectorDoor(DoorVarcoScript door)
     {
-        registeredRoomDoors[door.gameObject.name] = currentNodeId;
+        registeredRoomDoors[door.gameObject.name] = expData.currentNodeId;
         door.discovered = true;
 
-        var node = graph.GetNode(currentNodeId);
+        var node = expData.graph.GetNode(expData.currentNodeId);
 
         if (node is { type: NodeType.CorridorPoleB })
         {
@@ -758,7 +592,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         // Ignora porte che non appartengono fisicamente a questa stanza
         string frontName      = door.roomFront?.name;
         string backName       = door.roomBack?.name;
-        bool   doorBelongsHere = (frontName == currentNodeId || backName == currentNodeId);
+        bool   doorBelongsHere = (frontName == expData.currentNodeId || backName == expData.currentNodeId);
         if (!doorBelongsHere)
         {
             return;
@@ -771,13 +605,13 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         string toNodeId = leadsToCorridor ? roomBeyond : null;
         if (!string.IsNullOrEmpty(toNodeId))
         {
-            var targetNode = graph.GetNode(toNodeId);
+            var targetNode = expData.graph.GetNode(toNodeId);
             if (targetNode is { physicallyVisited: true } && !targetNode.HasUndiscoveredEdges())
                 return;
         }
 
         float navDist = door.NavMeshDistanceTo(transform.position);
-        graph.AddRoomDoorEdge(currentNodeId, door.gameObject.name,
+        expData.graph.AddRoomDoorEdge(expData.currentNodeId, door.gameObject.name,
             door.elementType == DoorVarcoScript.ElementType.Door,
             door.transform.position, navDist,
             toNodeId: toNodeId);
@@ -789,15 +623,16 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // --------------------------------------------------------
     private void HandleDoorVisibleInRoom(DoorVarcoScript door)
     {
-        if (state != State.Rotating360 && state != State.InsideRoom) return;
-        if (!inRoomMode) return;
+        if (!stateMachine.IsState(State.Rotating360) && 
+            !stateMachine.IsState(State.InsideRoom)) return;
+        if (!expData.inRoomMode) return;
         if (registeredRoomDoors.TryGetValue(door.gameObject.name, out string registeredFrom)
-            && registeredFrom == currentNodeId) return;
+            && registeredFrom == expData.currentNodeId) return;
 
         // FIX spam: porte non-connettore in un nodo connettore → ignora UNA VOLTA SOLA
-        if (traversedConnectors.Contains(currentNodeId) && !IsConnectorDoor(door.gameObject.name))
+        if (traversedConnectors.Contains(expData.currentNodeId) && !IsConnectorDoor(door.gameObject.name))
         {
-            CheckAndSaveDoor(door);
+            CheckAndMakeRoomRegistration(door);
             return;
         }
 
@@ -810,10 +645,10 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
      // REFACTOR: EXTRACTED METHOD
 
-     private void AddNodeToFromGraph(TopologicalGraph fromGraph, string connectorId, Vector3 connPosHere)
+     public void AddNodeToFromGraph(TopologicalGraph fromGraph, string connectorId, Vector3 connPosHere)
      {
          fromGraph.AddRoomNode(connectorId, connPosHere);
-         string sourceId = currentNodeId;
+         string sourceId = expData.currentNodeId;
          if (!string.IsNullOrEmpty(sourceId))
          {
              float dist = Vector3.Distance(fromGraph.GetNode(sourceId).position, connPosHere);
@@ -829,50 +664,28 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // --------------------------------------------------------
     private void HandleConnectorReached(string connectorId, int targetFloor, Vector3 pos)
     {
-        if (state != State.MovingToConnector) return;
-        if (pendingConnector == null || pendingConnector.id != connectorId) return;
+        if (expData.pendingConnector == null || expData.pendingConnector.id != connectorId) return;
 
-        bool isReverse = (pendingConnector.floorFrom == targetFloor);
-        Vector3 connPosHere = isReverse
-            ? pendingConnector.triggerEndPosition
-            : pendingConnector.triggerStartPosition;
-
-        int fromFloor = isReverse ? pendingConnector.floorTo : pendingConnector.floorFrom;
-        floorGraphs.TryGetValue(fromFloor, out var fromGraph);
-
-        if (fromGraph != null && fromGraph.GetNode(connectorId) == null)
+        stateMachine.TryTransition(State.MovingToConnector, State.TraversingStairs, () =>
         {
-            AddNodeToFromGraph(fromGraph, connectorId, connPosHere);
-        }
+            bool isReverse = (expData.pendingConnector.floorFrom == targetFloor);
+            Vector3 connPosHere = isReverse
+                ? expData.pendingConnector.triggerEndPosition
+                : expData.pendingConnector.triggerStartPosition;
 
-        state = State.TraversingStairs;
-        StartCoroutine(TraverseStairsThen(targetFloor));
-    }
-    
+            int fromFloor = isReverse ? expData.pendingConnector.floorTo : expData.pendingConnector.floorFrom;
+            expData.floorGraphs.TryGetValue(fromFloor, out var fromGraph);
 
-    // ====================================================
-    // STATI
-    // ====================================================
-    private void UpdateMovingToPole()
-    {
-        movingToPoleTimer += Time.deltaTime;
+            if (fromGraph != null && fromGraph.GetNode(connectorId) == null)
+            {
+                AddNodeToFromGraph(fromGraph, connectorId, connPosHere);
+            }
 
-        // WARN:?? Se il timer è scaduto facciamo comunque il processing del pole touched?
-        if (movingToPoleTimer >= poleTimeoutSeconds)
-        {
-            movingToPoleCorridorId = null;
-            movingToPoleTimer = 0f;
-            ProcessPoleTouched();
-            return;
-        }
-
-        if (navAgent.pathPending) return;
-        if (navAgent.remainingDistance < poleArrivalThreshold)
-        {
-            movingToPoleCorridorId = null;
-            movingToPoleTimer = 0f;
-            ProcessPoleTouched();
-        }
+            
+        });
+        
+        if(stateMachine.IsState(State.TraversingStairs))
+            StartCoroutine(TraverseStairsThen(targetFloor));
     }
     
     //
@@ -881,27 +694,27 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     private void CreateCorridorSegment(string corridorId, Vector3 doorPos, string poleAId, string poleBId)
     {
-        var nodeA = graph.GetNode($"{corridorId}_A");
-        var nodeB = graph.GetNode($"{corridorId}_B");
+        var nodeA = expData.graph.GetNode($"{corridorId}_A");
+        var nodeB = expData.graph.GetNode($"{corridorId}_B");
         
         string fromNode = null;
         float bestDist = float.MaxValue;
         if (nodeA != null) { float d = Vector3.Distance(doorPos, nodeA.position); if (d < bestDist) { bestDist = d; fromNode = $"{corridorId}_A"; } }
         if (nodeB != null) { float d = Vector3.Distance(doorPos, nodeB.position); if (d < bestDist) { fromNode = $"{corridorId}_B"; } }
         
-        float distToNewA = Vector3.Distance(doorPos, poleAPos);
-        float distToNewB = Vector3.Distance(doorPos, poleBPos);
+        float distToNewA = Vector3.Distance(doorPos, expData.poleAPos);
+        float distToNewB = Vector3.Distance(doorPos, expData.poleBPos);
         string toNode = distToNewA <= distToNewB ? poleAId : poleBId;
         
-        Vector3 fromPos = graph.GetNode(fromNode)?.position ?? Vector3.zero;
-        Vector3 toPos   = graph.GetNode(toNode)?.position   ?? Vector3.zero;
+        Vector3 fromPos = expData.graph.GetNode(fromNode)?.position ?? Vector3.zero;
+        Vector3 toPos   = expData.graph.GetNode(toNode)?.position   ?? Vector3.zero;
         float distFromDoor = NavMeshDist(fromPos, doorPos);
         float distDoorTo   = NavMeshDist(doorPos, toPos);
         float dist = (distFromDoor >= 0f && distDoorTo >= 0f)
             ? distFromDoor + distDoorTo
             : Vector3.Distance(fromPos, toPos);
 
-        graph.AddSegmentArc(fromNode, toNode, dist, lastCorridorLinkDoorName, doorPos);
+        expData.graph.AddSegmentArc(fromNode, toNode, dist, lastCorridorLinkDoorName, doorPos);
     }
 
     [CanBeNull]
@@ -912,36 +725,36 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         string back  = door.roomBack?.name  ?? "";
 
         // La porta deve avere un lato sul nuovo corridoio
-        bool newIsA = (front == pendingCorridorId || back == pendingCorridorId);
+        bool newIsA = (front == expData.pendingCorridorId || back == expData.pendingCorridorId);
         if (!newIsA) return null;
 
         // L'altro lato deve essere un corridoio già scoperto
-        string otherCorrId = (front == pendingCorridorId) ? back : front;
+        string otherCorrId = (front == expData.pendingCorridorId) ? back : front;
         // ← aggiungi qui, dopo otherCorrId è dichiarato
         var otherCorrDataCheck = FindCorridorData(otherCorrId);
         if (otherCorrDataCheck == null) return null;
             
-        var otherNodeA = graph.GetNode($"{otherCorrId}_A");
-        var otherNodeB = graph.GetNode($"{otherCorrId}_B");
+        var otherNodeA = expData.graph.GetNode($"{otherCorrId}_A");
+        var otherNodeB = expData.graph.GetNode($"{otherCorrId}_B");
         if (otherNodeA == null && otherNodeB == null) return null; // non ancora scoperto
         return otherCorrId;
     }
-    
+
     private void TouchedFirstPole(CorridorData corridorData)
     {
-        poleAPos = pendingPolePos;
-        Vector3 targetB = pendingPoleId == "1"
+        expData.poleAPos = expData.pendingPolePos;
+        Vector3 targetB = expData.pendingPoleId == "1"
             ? corridorData.Pole2Position
             : corridorData.Pole1Position;
-        poleBPos = targetB;
+        expData.poleBPos = targetB;
 
-        graph.AddCorridorPoles(pendingCorridorId, poleAPos, poleBPos,
-            Vector3.Distance(poleAPos, poleBPos));
+        expData.graph.AddCorridorPoles(expData.pendingCorridorId, expData.poleAPos, expData.poleBPos,
+            Vector3.Distance(expData.poleAPos, expData.poleBPos));
 
-        string comingFromNodeId = currentNodeId;
-        string poleAId          = $"{pendingCorridorId}_A";
-        currentNodeId           = poleAId;
-        graph.EnterNode(poleAId);
+        string comingFromNodeId = expData.currentNodeId;
+        string poleAId          = $"{expData.pendingCorridorId}_A";
+        expData.currentNodeId           = poleAId;
+        expData.graph.EnterNode(poleAId);
 
         if (!string.IsNullOrEmpty(comingFromNodeId) && 
             (comingFromNodeId.EndsWith("_B") || comingFromNodeId.EndsWith("_A")))
@@ -954,19 +767,19 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             string b = linkDoor?.roomBack?.name  ?? "";
             bool directlyLinked = linkDoor != null &&
                                 (f == comingCorridor || b == comingCorridor) &&
-                                (f == pendingCorridorId || b == pendingCorridorId);
+                                (f == expData.pendingCorridorId || b == expData.pendingCorridorId);
 
             if (directlyLinked)
             {
-                CreateCorridorSegment(comingCorridor, linkDoor.transform.position, poleAId, poleBId: $"{pendingCorridorId}_B");
+                CreateCorridorSegment(comingCorridor, linkDoor.transform.position, poleAId, poleBId: $"{expData.pendingCorridorId}_B");
             }
             lastCorridorLinkDoorName = null;
         }
         // Dopo aver creato i poli del nuovo corridoio,
         // cerca corridorLink già registrati che connettono
         // un corridoio già scoperto a questo nuovo corridoio.
-        string newCorrA = $"{pendingCorridorId}_A";
-        string newCorrB = $"{pendingCorridorId}_B";
+        string newCorrA = $"{expData.pendingCorridorId}_A";
+        string newCorrB = $"{expData.pendingCorridorId}_B";
         foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
         { 
             string otherCorrId = GetOtherCorridorIdIfDoorMatchesCorridorCriteria(door);
@@ -976,82 +789,42 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
            
         }
 
-        transitCorridorId = pendingCorridorId;
+        expData.transitCorridorId = expData.pendingCorridorId;
         registeredTransitDoors.Clear();
+        BeginTransitingToB(expData.poleAPos, targetB);
+        
 
-        navAgent.isStopped = false;
-        navAgent.SetDestination(targetB);
-        explorationVisionCone?.StartTransitScan(poleAPos, targetB, pendingCorridorId);
-        inRoomMode = false;
-        state      = State.Transiting;
-
-        Debug.Log($"[ExplMgr] Transito {pendingCorridorId}: A={poleAPos} → B={targetB}");
+        Debug.Log($"[ExplMgr] Transito {expData.pendingCorridorId}: A={expData.poleAPos} → B={targetB}");
     }
 
 
     private void TouchedAnotherPole()
     {
-        explorationVisionCone?.StopTransitScan();
+        expData.explorationVisionCone?.StopTransitScan();
 
-        string poleBId = $"{pendingCorridorId}_B";
-        currentNodeId  = poleBId;
-        graph.EnterNode(poleBId);
+        string poleBId = $"{expData.pendingCorridorId}_B";
+        expData.currentNodeId  = poleBId;
+        expData.graph.EnterNode(poleBId);
 
-        ScanCorridorDoorsFromScript(pendingCorridorId);
+        ScanCorridorDoorsFromScript(expData.pendingCorridorId);
 
-        ComputeCorridorOrders(pendingCorridorId);
+        ComputeCorridorOrders(expData.pendingCorridorId);
 
-        graph.MarkEdgeExplored($"{pendingCorridorId}_A",
-            $"central_{pendingCorridorId}", poleBId);
+        expData.graph.MarkEdgeExplored($"{expData.pendingCorridorId}_A",
+            $"central_{expData.pendingCorridorId}", poleBId);
 
-        movingToPoleCorridorId = null;
-        Debug.Log($"[ExplMgr] Polo B toccato. Inizio ispezione {pendingCorridorId}.");
+        expData.movingToPoleCorridorId = null;
+        Debug.Log($"[ExplMgr] Polo B toccato. Inizio ispezione {expData.pendingCorridorId}.");
         StartRotation360(isRoom: false);
     }
-    
 
-  private void ProcessPoleTouched()
+
+    public void StartRotation360(bool isRoom)
     {
-        var corridorData = FindCorridorData(pendingCorridorId);
-        if (corridorData == null) return;
-
-        bool isFirstPole = (state != State.Transiting);
-
-        if (isFirstPole)
-        {
-            TouchedFirstPole(corridorData);
-        }
-        else
-        {
-            TouchedAnotherPole();
-        }
-
-        pendingCorridorId = null;
-        pendingPoleId     = null;
-    }
-
-    private void UpdateTransiting()
-    {
-        transitTimer += Time.deltaTime;
-
-        if (navAgent.pathPending && transitTimer < poleTimeoutSeconds) return;
-
-        if (navAgent.remainingDistance < poleArrivalThreshold || transitTimer >= poleTimeoutSeconds)
-        {
-            transitTimer = 0f;
-            pendingCorridorId = transitCorridorId;
-            pendingPoleId     = "B_fallback";
-            pendingPolePos    = poleBPos;
-            ProcessPoleTouched();
-        }
-    }
-
-    private void StartRotation360(bool isRoom)
-    {
-        inRoomMode    = isRoom;
-        rotationAccum = 0f;
+        expData.inRoomMode    = isRoom;
+        expData.rotationAccum = 0f;
         navAgent.isStopped = true;
-        state = State.Rotating360;
+        stateMachine.SetState(State.Rotating360);
 
         if (isRoom)
             registeredRoomDoors.Clear();
@@ -1059,163 +832,39 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         // Marca il nodo come fisicamente visitato (360° reale).
         // Questo distingue i nodi aggiunti programmaticamente (es. ExecuteFloorChange)
         // dai nodi realmente esplorati, impedendo che LOOP EVITATO li salti.
-        if (isRoom && graph != null)
+        if (isRoom && expData.graph != null)
         {
-            var visitNode = graph.GetNode(currentNodeId);
+            var visitNode = expData.graph.GetNode(expData.currentNodeId);
             if (visitNode != null) visitNode.physicallyVisited = true;
         }
 
     }
 
-    private void UpdateRotating360()
-    {
-        navAgent.isStopped = true;
-        float step = rotationSpeed * Time.deltaTime;
-        transform.Rotate(0, step, 0);
-        rotationAccum += step;
-
-        if (rotationAccum >= 360f)
-        {
-            navAgent.isStopped = false;
-            rotationAccum = 0f;
-            Debug.Log($"[ExplMgr] 360° completato in '{currentNodeId}'.");
-
-            if (currentNodeId != null && currentNodeId.EndsWith("_B"))
-            {
-                string corrId = currentNodeId.Replace("_B", "");
-                ComputeCorridorOrders(corrId);
-            }
-
-            if (inRoomMode && !string.IsNullOrEmpty(currentNodeId))
-            {
-                var currentNode = graph.GetNode(currentNodeId);
-                bool hasUnexploredDoors = currentNode != null &&
-                                          currentNode.edges.Exists(e => e != null &&
-                                                                        e.state != EdgeState.Explored &&
-                                                                        e.edgeType == EdgeType.Door);
-                if (!hasUnexploredDoors)
-                    ScanRoomDoorsFromScript(currentNodeId);
-            }
-
-            DecideNextAction();
-        }
-    }
-
-    private void UpdateMovingToDoor()
-    {
-        if (navAgent.pathPending) return;
-        if (navAgent.remainingDistance <= inspectionDistance)
-        {
-            navAgent.isStopped = true;
-            state              = State.InspectingDoor;
-        }
-    }
-
-    private void UpdateInspectingDoor()
-    {
-        if (currentEdge == null) { DecideNextAction(); return; }
-
-        if (currentEdge.doorState == DoorState.Locked)
-        {
-            graph.MarkEdgeExplored(currentNodeId, currentEdge.id, null);
-            currentEdge = null;
-            navAgent.isStopped = false;
-            DecideNextAction();
-            return;
-        }
-
-        var door = FindDoorScript(currentEdge.id);
-        if (door != null && !door.IsTraversable && !door.TryOpen())
-        {
-            currentEdge.doorState = DoorState.Locked;
-            graph.MarkEdgeExplored(currentNodeId, currentEdge.id, null);
-            currentEdge = null;
-            navAgent.isStopped = false;
-            DecideNextAction();
-            return;
-        }
-
-        EnterThroughEdge(currentEdge);
-    }
-
-    private float enteringRoomTimer   = 0f;
-    private float enteringRoomTimeout = 3f;
-
-    private void UpdateEnteringRoom()
-    {
-        if (navAgent.pathPending) return;
-        enteringRoomTimer += Time.deltaTime;
-
-      if (navAgent.remainingDistance < arrivalThreshold && !navAgent.pathPending || enteringRoomTimer >= enteringRoomTimeout)
-        {
-            enteringRoomTimer = 0f;
-            StartRotation360(isRoom: true);
-        }
-    }
-
-    private void UpdateInsideRoom() => StartRotation360(isRoom: true);
-
-    private void UpdateBacktracking()
-    {
-        if (navAgent.pathPending) return;
-
-        backtrackTimer += Time.deltaTime;
-        bool arrived    = navAgent.hasPath && navAgent.remainingDistance <= arrivalThreshold;
-        bool pathFailed = !navAgent.hasPath;
-        bool timedOut   = backtrackTimer >= backtrackTimeout;
-
-        if (arrived || pathFailed || timedOut)
-        {
-            backtrackTimer = 0f;
-            
-            currentNodeId = graph.CurrentNodeId;
-            if (string.IsNullOrEmpty(currentNodeId)) { CheckFloorCompletion(); return; }
-
-            Debug.Log($"[ExplMgr] Backtrack completato in {currentNodeId}. Prossima azione!");
-            state = State.Idle;
-            DecideNextAction();
-        }
-    }
-
-    private void UpdateMovingToConnector()
-    {
-        if (navAgent.pathPending) return;
-        if (pendingConnector != null &&
-            navAgent.remainingDistance <= arrivalThreshold * 2f)
-        {
-            int targetFloor = (pendingConnector.floorFrom == currentFloor)
-                ? pendingConnector.floorTo
-                : pendingConnector.floorFrom;
-            state = State.TraversingStairs;
-            
-            StartCoroutine(TraverseStairsThen(targetFloor));
-        }
-    }
     //
     // REFACTOR DECISIONE PROSSIMA AZIONE
     //
-
-    private (string targetNode, GraphNode targetData) BacktrackingLoop()
+    
+    public (string targetNode, GraphNode targetData) BacktrackingLoop()
     {
         string    targetNode = null;
         GraphNode targetData = null;
 
         while (true)
         {
-            targetNode = graph.Backtrack();
+            targetNode = expData.graph.Backtrack();
             if (targetNode == null) { CheckFloorCompletion(); break; }
 
-            targetData = graph.GetNode(targetNode);
+            targetData = expData.graph.GetNode(targetNode);
             if (targetData != null && targetData.HasUndiscoveredEdges())
             {
                 if (targetNode.EndsWith("_A") || targetNode.EndsWith("_B"))
                 {
                     string corridorId = targetNode.Substring(0, targetNode.Length - 2);
-                    var nodeA = graph.GetNode($"{corridorId}_A");
-                    var nodeB = graph.GetNode($"{corridorId}_B");
+                    var nodeA = expData.graph.GetNode($"{corridorId}_A");
+                    var nodeB = expData.graph.GetNode($"{corridorId}_B");
                     bool corridorDone = nodeA is { physicallyVisited: true }
                                         && nodeB is { physicallyVisited: true }
-                                        && graph.IsCorridorFullyTransited(corridorId);
+                                        && expData.graph.IsCorridorFullyTransited(corridorId);
                     if (corridorDone)
                     {
                         continue;
@@ -1228,48 +877,23 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         return (targetNode, targetData);
     }
     
-        
-        
     // ====================================================
     // DECISIONE PROSSIMA AZIONE
     // ====================================================
-    private void DoBacktrack()
+    
+    public void DecideNextAction()
     {
-        (string targetNode, GraphNode targetData) = BacktrackingLoop();
+        if (string.IsNullOrEmpty(expData.currentNodeId)) return;
 
-        if (targetNode == null) { return; }
-
-        // Se il backtrack target è un polo corridoio, salta il viaggio fisico
-        // e vai direttamente alla porta successiva
-        if (targetNode.EndsWith("_A") || targetNode.EndsWith("_B"))
-        {
-            backtrackTimer = 0f;
-            currentNodeId  = targetNode;
-            Debug.Log($"[ExplMgr] Backtrack diretto a '{targetNode}' — salto viaggio fisico.");
-            state = State.Idle;
-            DecideNextAction();
-            return;
-        }
-
-        backtrackTimer = 0f;
-        navAgent.isStopped = false;
-        navAgent.SetDestination(targetData.position);
-        state = State.Backtracking;
-    }
-
-    private void DecideNextAction()
-    {
-        if (string.IsNullOrEmpty(currentNodeId)) return;
-
-        var node = graph.GetNode(currentNodeId);
-        if (node == null) { DoBacktrack(); return; }
+        var node = expData.graph.GetNode(expData.currentNodeId);
+        if (node == null) { stateMachine.DoBacktrack(); return; }
 
         GraphEdge nextEdge = null;
 
         if (node.type == NodeType.CorridorPoleB)
         {
-            nextEdge = graph.NextCorridorEdgeToInspect(currentNodeId) 
-                       ?? graph.NextRoomEdgeToInspect(currentNodeId);
+            nextEdge = expData.graph.NextCorridorEdgeToInspect(expData.currentNodeId) 
+                       ?? expData.graph.NextRoomEdgeToInspect(expData.currentNodeId);
 
             if (nextEdge == null)
             {
@@ -1283,21 +907,17 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             }
         }
         else if (node.type == NodeType.Room)
-            nextEdge = graph.NextRoomEdgeToInspect(currentNodeId);
+            nextEdge = expData.graph.NextRoomEdgeToInspect(expData.currentNodeId);
         else
-            nextEdge = graph.NextEdgeToInspect(currentNodeId);
+            nextEdge = expData.graph.NextEdgeToInspect(expData.currentNodeId);
 
         if (nextEdge != null)
         {
-            currentEdge        = nextEdge;
-            navAgent.isStopped = false;
-            navAgent.SetDestination(nextEdge.position);
-            state = State.MovingToDoor;
-            Debug.Log($"[ExplMgr] Prossima porta: {nextEdge.id} navDist={nextEdge.navMeshDist:F1}");
+            MoveToNextEdge(nextEdge);
         }
         else
         {
-            DoBacktrack();
+            stateMachine.DoBacktrack();
         }
     }
     
@@ -1308,9 +928,9 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         string newNodeId;
         if (doorScript != null && (edge.id.StartsWith("bw_") || edge.id.StartsWith("fw_")))
         {
-            string corridorId = (currentNodeId.EndsWith("_A") || currentNodeId.EndsWith("_B"))
-                ? currentNodeId.Substring(0, currentNodeId.Length - 2)
-                : currentNodeId;
+            string corridorId = (expData.currentNodeId.EndsWith("_A") || expData.currentNodeId.EndsWith("_B"))
+                ? expData.currentNodeId.Substring(0, expData.currentNodeId.Length - 2)
+                : expData.currentNodeId;
             string front = doorScript.roomFront?.name ?? "";
             string back  = doorScript.roomBack?.name  ?? "";
             if (front == corridorId) newNodeId = back;
@@ -1330,40 +950,40 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         var connector = FindConnectorForDoor(doorScript.gameObject.name);
         if (connector != null) newNodeId = connector.id;
 
-        if (newNodeId == currentNodeId)
+        if (newNodeId == expData.currentNodeId)
         {
             string beyond = doorScript.GetRoomNameBeyondDoor(transform.position);
-            if (!string.IsNullOrEmpty(beyond) && beyond != currentNodeId)
+            if (!string.IsNullOrEmpty(beyond) && beyond != expData.currentNodeId)
                 newNodeId = beyond;
         }
 
-        if (graph.GetNode(newNodeId) == null)
-            graph.AddRoomNode(newNodeId, edge.position);
+        if (expData.graph.GetNode(newNodeId) == null)
+            expData.graph.AddRoomNode(newNodeId, edge.position);
 
-        graph.MarkEdgeExplored(currentNodeId, edge.id, newNodeId);
+        expData.graph.MarkEdgeExplored(expData.currentNodeId, edge.id, newNodeId);
         SyncTwinCorridorEdge(edge.id, newNodeId);
 
-        currentEdge = null;
+        expData.currentEdge = null;
         navAgent.isStopped = false;
         DecideNextAction();
     }
 
     private bool HasCorridorBeenVisited(string newNodeId)
     {
-        if (graph.IsCorridorFullyTransited(newNodeId))
+        if (expData.graph.IsCorridorFullyTransited(newNodeId))
         {
             Debug.LogWarning($"[ExplMgr] Corridoio '{newNodeId}' già transitato.");
-            currentEdge = null;
+            expData.currentEdge = null;
             navAgent.isStopped = false;
             DecideNextAction();
             return true;
         }
         // Controlla anche se corridoio già fisicamente visitato e senza porte pendenti
-        var targetCorridorNode = graph.GetNode($"{newNodeId}_B");
+        var targetCorridorNode = expData.graph.GetNode($"{newNodeId}_B");
         if (targetCorridorNode is { physicallyVisited: true } && !targetCorridorNode.HasUndiscoveredEdges())
         {
             Debug.LogWarning($"[ExplMgr] Corridoio '{newNodeId}' già completato, salto transito.");
-            currentEdge = null;
+            expData.currentEdge = null;
             navAgent.isStopped = false;
             DecideNextAction();
             return true;
@@ -1383,12 +1003,12 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             Vector3 doorNormal = doorScript != null ? doorScript.transform.forward : transform.forward;
             Vector3 toDoor     = (edge.position - transform.position).normalized;
             if (Vector3.Dot(doorNormal, toDoor) < 0) doorNormal = -doorNormal;
-            enterTarget = edge.position + doorNormal * enterOffset;
+            enterTarget = edge.position + doorNormal * expData.enterOffset;
         }
         else
         {
             // Stanza: vai al centro del GameObject della stanza
-            var floorData = buildingGraph?.GetFloor(currentFloor);
+            var floorData = expData.buildingGraph?.GetFloor(expData.currentFloor);
             var roomObj   = FindRoom(newNodeId, floorData);
             if (roomObj != null)
                 enterTarget = GetRoomCenter(roomObj);
@@ -1398,7 +1018,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
                 Vector3 doorNormal = doorScript != null ? doorScript.transform.forward : transform.forward;
                 Vector3 toDoor     = (edge.position - transform.position).normalized;
                 if (Vector3.Dot(doorNormal, toDoor) < 0) doorNormal = -doorNormal;
-                enterTarget = edge.position + doorNormal * enterOffset;
+                enterTarget = edge.position + doorNormal * expData.enterOffset;
             }
         }
         return enterTarget;
@@ -1406,26 +1026,26 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     private bool HasEdgeAlreadyBeenExplored(string newNodeId, bool isTargetCorridor, GraphEdge edge)
     {
-        var existingNode = graph.GetNode(newNodeId);
+        var existingNode = expData.graph.GetNode(newNodeId);
         if (existingNode != null && !existingNode.HasUndiscoveredEdges() 
                                  && !isTargetCorridor 
                                  && existingNode.physicallyVisited)
         {
             Debug.LogWarning($"[ExplMgr] LOOP EVITATO: '{newNodeId}' già completata.");
-            graph.MarkEdgeExplored(currentNodeId, edge.id, newNodeId);
+            expData.graph.MarkEdgeExplored(expData.currentNodeId, edge.id, newNodeId);
             SyncTwinCorridorEdge(edge.id, newNodeId);
-            currentEdge = null;
+            expData.currentEdge = null;
             navAgent.isStopped = false;
             DecideNextAction();
             return true;
         }
 
-        graph.MarkEdgeExplored(currentNodeId, edge.id, isTargetCorridor ? null : newNodeId);
+        expData.graph.MarkEdgeExplored(expData.currentNodeId, edge.id, isTargetCorridor ? null : newNodeId);
         SyncTwinCorridorEdge(edge.id, newNodeId);
 
         if (isTargetCorridor)
         {
-            var currentNode = graph.GetNode(currentNodeId);
+            var currentNode = expData.graph.GetNode(expData.currentNodeId);
             if (currentNode != null)
             {
                 currentNode.edges.RemoveAll(e =>
@@ -1435,18 +1055,18 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
             if (HasCorridorBeenVisited(newNodeId)) return true;
             
-            idleTargetCorridorId = newNodeId;
-            state = State.Idle;
+            expData.idleTargetCorridorId = newNodeId;
+            stateMachine.SetState(State.Idle);
         }
         else
         {
-            var floorData2 = buildingGraph?.GetFloor(currentFloor);
+            var floorData2 = expData.buildingGraph?.GetFloor(expData.currentFloor);
             var roomObj2   = FindRoom(newNodeId, floorData2);
             Vector3 roomCenter = roomObj2 != null ? GetRoomCenter(roomObj2) : edge.position;
-            graph.AddRoomNode(newNodeId, roomCenter);
-            currentNodeId = newNodeId;
-            graph.EnterNode(currentNodeId);
-            state = State.EnteringRoom;
+            expData.graph.AddRoomNode(newNodeId, roomCenter);
+            expData.currentNodeId = newNodeId;
+            expData.graph.EnterNode(expData.currentNodeId);
+            stateMachine.SetState(State.EnteringRoom);
         }
 
         return false;
@@ -1455,7 +1075,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // ====================================================
     // ENTRA ATTRAVERSO UN ARCO
     // ====================================================
-    private void EnterThroughEdge(GraphEdge edge)
+    public void EnterThroughEdge(GraphEdge edge)
     {
         var doorScript = FindDoorScript(edge.id);
 
@@ -1492,24 +1112,24 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         if (isTargetCorridor)
             lastCorridorLinkDoorName = (edge.id.StartsWith("bw_") || edge.id.StartsWith("fw_"))
                 ? edge.id.Substring(3) : edge.id;
-        currentEdge = null;
+        expData.currentEdge = null;
     }
 
     private void SyncTwinCorridorEdge(string edgeId, string toNodeId)
     {
-        if (string.IsNullOrEmpty(currentNodeId)) return;
+        if (string.IsNullOrEmpty(expData.currentNodeId)) return;
 
-        if (currentNodeId.EndsWith("_B") && edgeId.StartsWith("bw_"))
+        if (expData.currentNodeId.EndsWith("_B") && edgeId.StartsWith("bw_"))
         {
-            string poleA  = currentNodeId.Replace("_B", "_A");
+            string poleA  = expData.currentNodeId.Replace("_B", "_A");
             string fwEdge = edgeId.Replace("bw_", "fw_");
-            graph.MarkEdgeExplored(poleA, fwEdge, toNodeId);
+            expData.graph.MarkEdgeExplored(poleA, fwEdge, toNodeId);
         }
-        else if (currentNodeId.EndsWith("_A") && edgeId.StartsWith("fw_"))
+        else if (expData.currentNodeId.EndsWith("_A") && edgeId.StartsWith("fw_"))
         {
-            string poleB  = currentNodeId.Replace("_A", "_B");
+            string poleB  = expData.currentNodeId.Replace("_A", "_B");
             string bwEdge = edgeId.Replace("fw_", "bw_");
-            graph.MarkEdgeExplored(poleB, bwEdge, toNodeId);
+            expData.graph.MarkEdgeExplored(poleB, bwEdge, toNodeId);
         }
     }
     
@@ -1520,28 +1140,28 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     private bool FindAndExploreAdjacentFloors(List<FloorNode> unexplored)
     {
         unexplored.Sort((a, b) =>
-            Mathf.Abs(a.floorIndex - currentFloor)
-                .CompareTo(Mathf.Abs(b.floorIndex - currentFloor)));
+            Mathf.Abs(a.floorIndex - expData.currentFloor)
+                .CompareTo(Mathf.Abs(b.floorIndex - expData.currentFloor)));
 
         foreach (var targetFloor in unexplored)
         {
-            var connectors = buildingGraph.GetConnectors(currentFloor, targetFloor.floorIndex);
+            var connectors = expData.buildingGraph.GetConnectors(expData.currentFloor, targetFloor.floorIndex);
             connectors.RemoveAll(c => traversedConnectors.Contains(c.id));
             if (connectors.Count == 0) continue;
 
             connectors.Sort((a, b) => a.costUp.CompareTo(b.costUp));
-            pendingConnector = connectors[0];
+            expData.pendingConnector = connectors[0];
 
-            bool isReverse = (pendingConnector.floorFrom != currentFloor);
+            bool isReverse = (expData.pendingConnector.floorFrom != expData.currentFloor);
             Vector3 navTarget = isReverse
-                ? pendingConnector.triggerEndPosition
-                : pendingConnector.triggerStartPosition;
+                ? expData.pendingConnector.triggerEndPosition
+                : expData.pendingConnector.triggerStartPosition;
 
-            Debug.Log($"[ExplMgr] Piano {currentFloor} → piano {targetFloor.floorIndex} " +
-                      $"via '{pendingConnector.id}' (diretto)");
+            Debug.Log($"[ExplMgr] Piano {expData.currentFloor} → piano {targetFloor.floorIndex} " +
+                      $"via '{expData.pendingConnector.id}' (diretto)");
             navAgent.isStopped = false;
             navAgent.SetDestination(navTarget);
-            state = State.MovingToConnector;
+            stateMachine.SetState(State.MovingToConnector);
             return true;
         }
 
@@ -1550,45 +1170,45 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     private bool FindAndExploreOtherFloors(List<FloorNode> unexplored)
     {
-        Debug.Log($"[ExplMgr] Nessun connettore diretto da piano {currentFloor}. " +
+        Debug.Log($"[ExplMgr] Nessun connettore diretto da piano {expData.currentFloor}. " +
                   $"Cerco percorso indiretto...");
 
         unexplored.Sort((a, b) => a.floorIndex.CompareTo(b.floorIndex));
 
         // Piani già visitati, ordinati per vicinanza al piano corrente
-        var visitedFloors = new List<int>(floorGraphs.Keys);
+        var visitedFloors = new List<int>(expData.floorGraphs.Keys);
         visitedFloors.Sort((a, b) =>
-            Mathf.Abs(a - currentFloor).CompareTo(Mathf.Abs(b - currentFloor)));
+            Mathf.Abs(a - expData.currentFloor).CompareTo(Mathf.Abs(b - expData.currentFloor)));
 
         foreach (var targetFloor in unexplored)
         {
             foreach (int midFloor in visitedFloors)
             {
-                if (midFloor == currentFloor) continue;
+                if (midFloor == expData.currentFloor) continue;
 
                 // Il piano intermedio deve avere un connettore non traversato verso targetFloor
-                var connToTarget = buildingGraph.GetConnectors(midFloor, targetFloor.floorIndex);
+                var connToTarget = expData.buildingGraph.GetConnectors(midFloor, targetFloor.floorIndex);
                 connToTarget.RemoveAll(c => traversedConnectors.Contains(c.id));
                 if (connToTarget.Count == 0) continue;
 
                 // Cerca il connettore tra currentFloor e midFloor
                 // (può essere già traversato — vogliamo ri-attraversarlo)
-                var connToMid = buildingGraph.GetConnectors(currentFloor, midFloor);
+                var connToMid = expData.buildingGraph.GetConnectors(expData.currentFloor, midFloor);
                 if (connToMid.Count == 0) continue;
 
                 connToMid.Sort((a, b) => a.costUp.CompareTo(b.costUp));
-                pendingConnector = connToMid[0];
+                expData.pendingConnector = connToMid[0];
 
-                bool isReverse = (pendingConnector.floorFrom != currentFloor);
+                bool isReverse = (expData.pendingConnector.floorFrom != expData.currentFloor);
                 Vector3 navTarget = isReverse
-                    ? pendingConnector.triggerEndPosition
-                    : pendingConnector.triggerStartPosition;
+                    ? expData.pendingConnector.triggerEndPosition
+                    : expData.pendingConnector.triggerStartPosition;
 
-                Debug.Log($"[ExplMgr] Percorso indiretto: piano {currentFloor} → piano {midFloor} " +
-                          $"→ piano {targetFloor.floorIndex} via '{pendingConnector.id}'");
+                Debug.Log($"[ExplMgr] Percorso indiretto: piano {expData.currentFloor} → piano {midFloor} " +
+                          $"→ piano {targetFloor.floorIndex} via '{expData.pendingConnector.id}'");
                 navAgent.isStopped = false;
                 navAgent.SetDestination(navTarget);
-                state = State.MovingToConnector;
+                stateMachine.SetState(State.MovingToConnector);
                 return true;
             }
         }
@@ -1599,11 +1219,11 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     // ====================================================
     // COMPLETAMENTO PIANO
     // ====================================================
-    private void CheckFloorCompletion()
+    public void CheckFloorCompletion()
     {
-        if (buildingGraph == null) { OnAllFloorsCompleted(); return; }
+        if (expData.buildingGraph == null) { OnAllFloorsCompleted(); return; }
 
-        var floorData = buildingGraph.GetFloor(currentFloor);
+        var floorData = expData.buildingGraph.GetFloor(expData.currentFloor);
 
         if (!IsCurrentFloorFullyExplored(floorData))
         {
@@ -1613,9 +1233,9 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         }
 
         if (floorData != null) floorData.explored = true;
-        Debug.Log($"[ExplMgr] Piano {currentFloor} completato.");
+        Debug.Log($"[ExplMgr] Piano {expData.currentFloor} completato.");
 
-        var unexplored = buildingGraph.GetUnexploredFloors();
+        var unexplored = expData.buildingGraph.GetUnexploredFloors();
         if (unexplored.Count == 0)
         {
             Debug.Log("[ExplMgr] Tutti i piani esplorati.");
@@ -1644,7 +1264,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     private bool IsCurrentFloorFullyExplored(FloorNode floorData)
     {
         // 1. Il grafo del piano corrente deve avere tutti gli archi esplorati
-        if (!graph.IsFullyExplored())
+        if (!expData.graph.IsFullyExplored())
         {
             Debug.LogWarning("[ExplMgr] Floor has unexplored edges.");
             return false;
@@ -1656,13 +1276,13 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         foreach (string roomId in floorData.roomIds)
         {
             // Check diretto: nodo con ID uguale al nome del GameObject
-            if (graph.GetNode(roomId) != null) continue;
+            if (expData.graph.GetNode(roomId) != null) continue;
      
             // ── FIX BUG 2: i corridoi nel grafo si chiamano {id}_A e {id}_B ──
             // Un corridoio nel BuildingGraph si chiama es. "corridoio1",
             // ma nel TopologicalGraph esiste come "corridoio1_A" e "corridoio1_B".
             // Se almeno il polo A è presente, il corridoio è stato attraversato.
-            var poleANode = graph.GetCorridorPoleNode($"{roomId}_A");
+            var poleANode = expData.graph.GetCorridorPoleNode($"{roomId}_A");
             if (poleANode != null)
             {
                 var centralEdge = poleANode.edges?.Find(e => e?.id == $"central_{roomId}");
@@ -1670,14 +1290,14 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
                     continue;
 
                 // FIX: considera completato anche se entrambi i poli sono fisicamente visitati
-                var poleBNode = graph.GetNode($"{roomId}_B");
+                var poleBNode = expData.graph.GetNode($"{roomId}_B");
                 if (poleANode.physicallyVisited && poleBNode is { physicallyVisited: true })
                 {
                     Debug.Log($"[ExplMgr] '{roomId}' — entrambi i poli visitati, considero completato.");
                     continue;
                 }
 
-                Debug.Log($"[ExplMgr] Piano {currentFloor}: '{roomId}' ha polo ma transito non completato.");
+                Debug.Log($"[ExplMgr] Piano {expData.currentFloor}: '{roomId}' ha polo ma transito non completato.");
             }
                 
             Debug.LogWarning("[ExplMgr] Floor has unexplored Rooms.");
@@ -1703,38 +1323,26 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     private bool HasRoomAlreadyBeenExplored(string roomId)
     {
         // Skip se la porta fisica verso questa stanza è già stata esplorata (anche con nome nodo diverso)
-        string doorCheck = FindDoorBetweenNodes(currentNodeId, roomId);
+        string doorCheck = FindDoorBetweenNodes(expData.currentNodeId, roomId);
         if (!string.IsNullOrEmpty(doorCheck))
         {
-            var currNode = graph.GetNode(currentNodeId);
+            var currNode = expData.graph.GetNode(expData.currentNodeId);
             if (currNode != null && currNode.edges.Exists(e =>
                     e?.id == doorCheck && e.state == EdgeState.Explored))
                 return true;
         }
-        var poleANodeNav = graph.GetCorridorPoleNode($"{roomId}_A");
+        var poleANodeNav = expData.graph.GetCorridorPoleNode($"{roomId}_A");
         var centralEdgeNav = poleANodeNav?.edges?.Find(e => e?.id == $"central_{roomId}");
         return centralEdgeNav is { state: EdgeState.Explored };
         // davvero già transitato
         // altrimenti cade giù e NavigateToUnexploredCorridor lo naviga normalmente
     }
 
-    private void SetMovingToPole(string roomId, CorridorData corridorData)
-    {
-        float d1 = Vector3.Distance(transform.position, corridorData.Pole1Position);
-        float d2 = Vector3.Distance(transform.position, corridorData.Pole2Position);
-        pendingCorridorId      = roomId;
-        pendingPoleId          = d1 <= d2 ? "1" : "2";
-        pendingPolePos         = d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position;
-        movingToPoleCorridorId = roomId;
-        movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        navAgent.SetDestination(pendingPolePos);
-        state = State.MovingToPole;
-    }
+    
 
     private void CreateEdgeWithPreviousRoom(string roomId, Vector3 center)
     {
-        var prevNode = graph.GetNode(currentNodeId);
+        var prevNode = expData.graph.GetNode(expData.currentNodeId);
         if (prevNode != null)
         {
             bool alreadyLinked = prevNode.edges.Exists(e => e != null && e.toNodeId == roomId);
@@ -1742,21 +1350,21 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             {
                 float dist = Vector3.Distance(prevNode.position, center);
                 // Trova la porta fisica più vicina al nodo connettore corrente
-                string synDoorName = FindDoorBetweenNodes(currentNodeId, roomId);
+                string synDoorName = FindDoorBetweenNodes(expData.currentNodeId, roomId);
                 if (string.IsNullOrEmpty(synDoorName))
-                    synDoorName = $"nav_{currentNodeId}_{roomId}";
+                    synDoorName = $"nav_{expData.currentNodeId}_{roomId}";
 
-                var synEdge = graph.AddRoomDoorEdge(currentNodeId, synDoorName,
+                var synEdge = expData.graph.AddRoomDoorEdge(expData.currentNodeId, synDoorName,
                     false, center, dist, roomId);
                 if (synEdge != null)
-                    graph.MarkEdgeExplored(currentNodeId, synEdge.id, roomId);
+                    expData.graph.MarkEdgeExplored(expData.currentNodeId, synEdge.id, roomId);
             }
         }
     }
 
     private void UpdateEdgeId(string roomId)
     {
-        foreach (var node in graph.AllNodes())
+        foreach (var node in expData.graph.AllNodes())
         {
             if (node == null) continue;
             foreach (var edge in node.edges)
@@ -1771,7 +1379,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     }
 
     private bool CheckForRoomExistenceAndStatus(string roomId, GameObject roomObj) => 
-        graph.GetNode(roomId) != null || HasRoomAlreadyBeenExplored(roomId) || roomObj == null;
+        expData.graph.GetNode(roomId) != null || HasRoomAlreadyBeenExplored(roomId) || roomObj == null;
 
     private void NavigateToUnexploredCorridor(FloorNode floorData)
     {
@@ -1787,37 +1395,37 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
                 var corridorData = FindCorridorData(roomId);
                 if (corridorData != null)
                 {
-                    SetMovingToPole(roomId, corridorData);
+                    BeginMovingToPole(roomId, corridorData);
                     return;
                 }
 
                 Vector3 center = GetRoomCenter(roomObj);
-                graph.AddRoomNode(roomId,center);
-                graph.EnterNode(roomId);
+                expData.graph.AddRoomNode(roomId,center);
+                expData.graph.EnterNode(roomId);
                 CreateEdgeWithPreviousRoom(roomId, center);
 
                 UpdateEdgeId(roomId);
-                currentNodeId = roomId;
+                expData.currentNodeId = roomId;
                 navAgent.isStopped = false;
                 navAgent.SetDestination(center);
-                state = State.EnteringRoom;
+                stateMachine.SetState(State.EnteringRoom);
                 return;
             }
         }
 
-        string targetId = graph.FindNearestNodeWithDiscoveredEdges(transform.position);
+        string targetId = expData.graph.FindNearestNodeWithDiscoveredEdges(transform.position);
         if (targetId == null) { OnAllFloorsCompleted(); return; }
 
-        navAgent.SetDestination(graph.GetNode(targetId).position);
-        currentNodeId = targetId;
-        state = State.Backtracking;
+        navAgent.SetDestination(expData.graph.GetNode(targetId).position);
+        expData.currentNodeId = targetId;
+        stateMachine.SetState(State.Backtracking);
     }
     
     //REFACTOR: methods extracted from ExecuteFloorChange 
-    
+
     private string SetupConnectorAndNewFloor([NotNull] VerticalConnector activeConnector, int targetFloor)
     {
-        int fromFloor = currentFloor;
+        int fromFloor = expData.currentFloor;
         bool isReverse = (activeConnector.floorFrom == targetFloor);
 
         
@@ -1832,17 +1440,17 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             ? activeConnector.triggerStartPosition
             : activeConnector.triggerEndPosition;
 
-        if (graph != null && graph.GetNode(connNodeId) == null)
-            graph.AddRoomNode(connNodeId, connPosCurrentFloor);
+        if (expData.graph != null && expData.graph.GetNode(connNodeId) == null)
+            expData.graph.AddRoomNode(connNodeId, connPosCurrentFloor);
 
-        if (!floorGraphs.ContainsKey(targetFloor))
-            floorGraphs[targetFloor] = new TopologicalGraph();
+        if (!expData.floorGraphs.ContainsKey(targetFloor))
+            expData.floorGraphs[targetFloor] = new TopologicalGraph();
 
-        var destGraph = floorGraphs[targetFloor];
+        var destGraph = expData.floorGraphs[targetFloor];
         if (destGraph.GetNode(connNodeId) == null)
             destGraph.AddRoomNode(connNodeId, connPosDestFloor);
             
-        bool alreadyExists = ConnectorLinks.Exists(l =>
+        bool alreadyExists = expData.ConnectorLinks.Exists(l =>
             l.connectorId == activeConnector.id &&
             ((l.floorFrom == fromFloor   && l.floorTo == targetFloor) ||
              (l.floorFrom == targetFloor && l.floorTo == fromFloor)));
@@ -1850,7 +1458,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         if (!alreadyExists)
         {
 
-            ConnectorLinks.Add(new FloorConnectorLink
+            expData.ConnectorLinks.Add(new FloorConnectorLink
             {
                 connectorId = activeConnector.id,
                 floorFrom   = fromFloor,
@@ -1880,7 +1488,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             : notNullCandidate;
         candidate = (front == connNodeId) ? back : candidate;
 
-        var fdAdj = buildingGraph?.GetFloor(targetFloor);
+        var fdAdj = expData.buildingGraph?.GetFloor(targetFloor);
         if (!string.IsNullOrEmpty(candidate) && candidate != connNodeId
                                              && (fdAdj?.roomIds.Contains(candidate) ?? false))
         {
@@ -1897,7 +1505,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         string adjRoom = null;
         string adjDoorName = null;
         Vector3 adjPos = Vector3.zero;
-        var fdAdj = buildingGraph?.GetFloor(targetFloor);
+        var fdAdj = expData.buildingGraph?.GetFloor(targetFloor);
         if (fdAdj != null)
         {
             foreach (string rid in fdAdj.roomIds)
@@ -1943,37 +1551,37 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         var adjCorridor = FindCorridorData(adjRoom);
         if (adjCorridor != null)
         {
-            BeginMovingToCorridor(adjRoom, adjCorridor, false);
+            BeginMovingToPole1(adjRoom, adjCorridor, false);
             Debug.Log($"[ExplMgr] Destinazione è corridoio '{adjRoom}' → vado al polo.");
             return true;
         }
 
         return false;
     }
-
+    
     private void SetupAdjacentRoomAsRoom(string adjRoom, Vector3 adjPos, string connNodeId, string adjDoorName)
     {
-        if (graph.GetNode(adjRoom) == null)
-            graph.AddRoomNode(adjRoom, adjPos);
+        if (expData.graph.GetNode(adjRoom) == null)
+            expData.graph.AddRoomNode(adjRoom, adjPos);
 
-        float dAdj = Vector3.Distance(graph.GetNode(connNodeId).position, adjPos);
-        var adjEdge = graph.AddRoomDoorEdge(connNodeId, adjDoorName,
+        float dAdj = Vector3.Distance(expData.graph.GetNode(connNodeId).position, adjPos);
+        var adjEdge = expData.graph.AddRoomDoorEdge(connNodeId, adjDoorName,
             false, adjPos, dAdj, adjRoom);
         if (adjEdge != null)
-            graph.MarkEdgeExplored(connNodeId, adjEdge.id, adjRoom);
+            expData.graph.MarkEdgeExplored(connNodeId, adjEdge.id, adjRoom);
 
-        graph.EnterNode(adjRoom);
-        currentNodeId = adjRoom;
+        expData.graph.EnterNode(adjRoom);
+        expData.currentNodeId = adjRoom;
 
-        inRoomMode             = false;
-        movingToPoleCorridorId = null;
-        idleTargetCorridorId   = null;
+        expData.inRoomMode             = false;
+        expData.movingToPoleCorridorId = null;
+        expData.idleTargetCorridorId   = null;
 
         navAgent.isStopped = false;
         navAgent.SetDestination(adjPos);
-        enteringRoomTimer   = 0f;
-        enteringRoomTimeout = 6f;
-        state               = State.EnteringRoom;
+        expData.enteringRoomTimer   = 0f;
+        expData.enteringRoomTimeout = 6f;
+        stateMachine.SetState(State.EnteringRoom);
 
         Debug.Log($"[ExplMgr] Cammino verso '{adjRoom}' via '{adjDoorName}'.");
     }
@@ -1985,7 +1593,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         if (string.IsNullOrEmpty(dName)) return null;
         bool isConnTrigger = FindConnectorForDoor(dName) != null;
         if (isConnTrigger) return null;
-        var existingEdge = graph.GetNode(connNodeId)?.edges
+        var existingEdge = expData.graph.GetNode(connNodeId)?.edges
             .Find(e => e?.toNodeId == rid || e?.id == dName);
         if (existingEdge != null) return null;
         var roomObj = FindRoom(rid, fd2);
@@ -1994,7 +1602,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     
     private void ConnectAlreadyKnownRoomsToConnectorNode(string connNodeId, int targetFloor)
     {
-        var fd2 = buildingGraph?.GetFloor(targetFloor);
+        var fd2 = expData.buildingGraph?.GetFloor(targetFloor);
         if (fd2 != null)
         {
             foreach (string rid in fd2.roomIds)
@@ -2004,15 +1612,15 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
                 GameObject roomObj = FindConnectorRoomWithGuards(dName, connNodeId, rid, fd2);
                 if (roomObj == null) return;
                 Vector3 rCenter = GetRoomCenter(roomObj);
-                float d = Vector3.Distance(graph.GetNode(connNodeId).position, rCenter);
-                graph.AddRoomDoorEdge(connNodeId, dName, false, rCenter, d, rid);
+                float d = Vector3.Distance(expData.graph.GetNode(connNodeId).position, rCenter);
+                expData.graph.AddRoomDoorEdge(connNodeId, dName, false, rCenter, d, rid);
             }
         }
     }
 
     private bool HandleNextFloorArrival(string connNodeId, int targetFloor)
     {
-        var floorData = buildingGraph?.GetFloor(targetFloor);
+        var floorData = expData.buildingGraph?.GetFloor(targetFloor);
         if (floorData != null)
         {
             GetToNextFloorSpawnPosition(floorData, targetFloor, connNodeId);
@@ -2025,8 +1633,8 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             {
                 CorridorData exitCorridor = FindCorridorContainingPosition(navAgent.transform.position, 3f);
                 if (exitCorridor != null)
-                {
-                    BeginMovingToCorridor(exitCorridor, true);
+                { 
+                    BeginMovingToPole1(exitCorridor, true);
                     return true;  // ← salta Tentativo 1/2 e il blocco corridoio finale
                 }
 
@@ -2050,7 +1658,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
         return false;
     }
-    
+
     private bool HasCorridorAlreadyBeenExplored(CorridorPoleNode poleANode, CorridorData spawnCorridor) => 
         poleANode != null &&
         poleANode.edges.Exists(e => e?.id == $"central_{spawnCorridor.corridorId}"
@@ -2064,59 +1672,34 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             ? connNodeId
             : nextFloorSpawnId;
 
-        currentNodeId = spawnId;
-        if (graph.GetNode(currentNodeId) == null)
-            graph.AddRoomNode(currentNodeId, floorData.spawnPosition);
+        expData.currentNodeId = spawnId;
+        if (expData.graph.GetNode(expData.currentNodeId) == null)
+            expData.graph.AddRoomNode(expData.currentNodeId, floorData.spawnPosition);
 
-        graph.EnterNode(currentNodeId);
-    }
-
-
-    private void BeginMovingToCorridor(string roomId, CorridorData corridor, bool nullDoor)
-    {
-        if(nullDoor) pendingArrivalDoor = null;
-        pendingCorridorId      = roomId;
-        pendingPoleId          = "1";
-        pendingPolePos         = corridor.Pole1Position;
-        movingToPoleCorridorId = roomId;
-        movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        navAgent.SetDestination(corridor.Pole1Position);
-        state = State.MovingToPole;
+        expData.graph.EnterNode(expData.currentNodeId);
     }
     
-    private void BeginMovingToCorridor(CorridorData corridor, bool nullDoor)
-    {
-        if(nullDoor) pendingArrivalDoor = null;
-        pendingCorridorId      = corridor.corridorId;
-        pendingPoleId          = "1";
-        pendingPolePos         = corridor.Pole1Position;
-        movingToPoleCorridorId = corridor.corridorId;
-        movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        navAgent.SetDestination(corridor.Pole1Position);
-        state = State.MovingToPole;
-    }
+    
     
     private void ExecuteFloorChange(int targetFloor)
     {
-        if (state == State.Completed) return;
+        if (stateMachine.IsState(State.Completed)) return;
 
         
         string connNodeId = string.Empty;
-        var activeConnector = pendingConnector;
+        var activeConnector = expData.pendingConnector;
 
         if (activeConnector != null)
         {
             connNodeId = SetupConnectorAndNewFloor(activeConnector, targetFloor);
         }
-        else if (!floorGraphs.ContainsKey(targetFloor))
+        else if (!expData.floorGraphs.ContainsKey(targetFloor))
         {
-            floorGraphs[targetFloor] = new TopologicalGraph();
+            expData.floorGraphs[targetFloor] = new TopologicalGraph();
         }
 
-        currentFloor     = targetFloor;
-        pendingConnector = null;
+        expData.currentFloor     = targetFloor;
+        expData.pendingConnector = null;
         
 
         registeredRoomDoors.Clear();
@@ -2125,9 +1708,9 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
         if (HandleNextFloorArrival(connNodeId, targetFloor)) return;
 
-        inRoomMode             = false;
-        movingToPoleCorridorId = null;
-        idleTargetCorridorId   = null;
+        expData.inRoomMode             = false;
+        expData.movingToPoleCorridorId = null;
+        expData.idleTargetCorridorId   = null;
 
         CorridorData spawnCorridor = FindCorridorContainingPosition(navAgent.transform.position, 3f);
         if (spawnCorridor == null) { 
@@ -2135,7 +1718,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             return;
         }
         // Controlla se il corridoio è già stato completamente esplorato in questo piano
-        var poleANode = graph.GetCorridorPoleNode($"{spawnCorridor.corridorId}_A");
+        var poleANode = expData.graph.GetCorridorPoleNode($"{spawnCorridor.corridorId}_A");
         bool alreadyDone = HasCorridorAlreadyBeenExplored(poleANode, spawnCorridor);
         
         if (alreadyDone)
@@ -2146,23 +1729,24 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         else
         {
             Debug.Log($"[ExplMgr] Spawn in corridoio '{spawnCorridor.corridorId}' — avvio modalità corridoio.");
-            BeginMovingToCorridor(spawnCorridor, false);
+            BeginMovingToPole1(spawnCorridor, false);
         }
         
     }
+    
     // ====================================================
     // FINE ESPLORAZIONE
     // ====================================================
 
     private void OnAllFloorsCompleted()
     {
-        explorationVisionCone?.SetExplorationMode(false);
-        state = State.Completed;
+        expData.explorationVisionCone?.SetExplorationMode(false);
+        stateMachine.SetState(State.Completed);
 
         // ── 1. Calcola distanze Stanze ────────────────────────────
         var ddm = GetComponent<RoomDistanceMap>();
         if (ddm != null)
-            ddm.Compute(floorGraphs);
+            ddm.Compute(expData.floorGraphs);
         else
             Debug.LogWarning("[ExplMgr] RoomDistanceMap non trovato sul GameObject!");
 
@@ -2170,7 +1754,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
         // ── 2. Costruisci snapshot ───────────────────────────────
         BuildingSnapshot snapshot = GraphSnapshotBuilder.Build(
-            floorGraphs, ConnectorLinks, roomPairs, _roomArtifacts, buildingId);
+            expData.floorGraphs, expData.ConnectorLinks, roomPairs, _roomArtifacts, expData.buildingId);
 
         snapshot.discoveredObjects.AddRange(_artifactData.Values);
         // ── 3. Salva su disco ────────────────────────────────────
@@ -2181,7 +1765,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
         
         // ── 4. Salva JSON artefatti separato ─────────────────────
-        ArtifactsPersistence.Save(buildingId, _roomArtifacts, _artifactData);
+        ArtifactsPersistence.Save(expData.buildingId, _roomArtifacts, _artifactData);
 
 
         // ── 6. Trasmetti a JaCaMo ────────────────────────────────
@@ -2190,22 +1774,23 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
          // ── 7. Aggiorna current_room col nodo reale di fine esplorazione ──
         var loc = GetComponent<LocalizationTest>();  
-        loc?.ForceCurrentRoomAndSend(NormalizeRoomId(currentNodeId));
-        Debug.Log($"[ExplMgr] Edificio '{buildingId}' esplorato. " +
-                $"Piani: {floorGraphs.Count}  Link: {ConnectorLinks.Count}  " +
+        loc?.ForceCurrentRoomAndSend(NormalizeRoomId(expData.currentNodeId));
+        Debug.Log($"[ExplMgr] Edificio '{expData.buildingId}' esplorato. " +
+                $"Piani: {expData.floorGraphs.Count}  Link: {expData.ConnectorLinks.Count}  " +
                 $"Distanze: {roomPairs.Count}  Snapshot salvato: {saved}");
     }
    
     // ====================================================
     // HELPER
     // ====================================================
-    private CorridorData FindCorridorData(string id)
+    public CorridorData FindCorridorData(string id)
     {
         foreach (var c in FindObjectsByType<CorridorData>(FindObjectsSortMode.None))
             if (c.corridorId == id) return c;
         return null;
     }
-        private CorridorData FindCorridorContainingPosition(Vector3 pos, float radius)
+
+    private CorridorData FindCorridorContainingPosition(Vector3 pos, float radius)
     {
         foreach (var c in FindObjectsByType<CorridorData>(FindObjectsSortMode.None))
         {
@@ -2232,7 +1817,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     }
 
     [CanBeNull]
-    private DoorVarcoScript FindDoorScript([CanBeNull] string name)
+    public DoorVarcoScript FindDoorScript([CanBeNull] string name)
     {
         if (name == null) return null;
         string cleanName = name;
@@ -2246,8 +1831,8 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
     private bool IsConnectorDoor(string doorName)
     {
-        if (buildingGraph == null) return false;
-        foreach (var connector in buildingGraph.connectors)
+        if (expData.buildingGraph == null) return false;
+        foreach (var connector in expData.buildingGraph.connectors)
         {
             if (connector.triggerStartObject?.name == doorName) return true;
             if (connector.triggerEndObject?.name   == doorName) return true;
@@ -2256,8 +1841,8 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     }
     private VerticalConnector FindConnectorForDoor(string doorName)
     {
-        if (buildingGraph == null) return null;
-        foreach (var c in buildingGraph.connectors)
+        if (expData.buildingGraph == null) return null;
+        foreach (var c in expData.buildingGraph.connectors)
         {
             if (c.triggerStartObject?.name == doorName) return c;
             if (c.triggerEndObject?.name == doorName) return c;
@@ -2265,7 +1850,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         return null;
     }
 
-    private void ResetCorridorPoles(string corridorId)
+    public void ResetCorridorPoles(string corridorId)
     {
         foreach (var pole in FindObjectsByType<CorridorPoleScript>(FindObjectsSortMode.None))
         {
@@ -2275,8 +1860,8 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     }
 
     //PORTE PER LE SCALE
-    private IEnumerator TraverseStairsThen(int targetFloor) {
-        var activeConnector = pendingConnector;
+    public IEnumerator TraverseStairsThen(int targetFloor) {
+        var activeConnector = expData.pendingConnector;
 
         // Apri porta di partenza
         bool isNormalDir = (activeConnector == null || activeConnector.floorFrom != targetFloor);
@@ -2308,7 +1893,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         // Aspetta l'arrivo
         yield return new WaitForSeconds(0.5f); // piccolo delay per far partire il path
         while (navAgent.pathPending ||
-               navAgent.remainingDistance > arrivalThreshold * 2f)
+               navAgent.remainingDistance > expData.arrivalThreshold * 2f)
         {
             yield return null;
         }
@@ -2347,31 +1932,31 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
             if (isCorridorDoorAlreadyRegistered(door)) { continue; }
 
-            float dA = Vector3.Distance(door.transform.position, poleAPos);
-            float dB = Vector3.Distance(door.transform.position, poleBPos);
+            float dA = Vector3.Distance(door.transform.position, expData.poleAPos);
+            float dB = Vector3.Distance(door.transform.position, expData.poleBPos);
             string otherSide = (frontName == corridorId) ? backName : frontName;
-            string side = ComputeSideRelativeToCorridorAxis(door.transform.position, poleAPos, poleBPos);
+            string side = ComputeSideRelativeToCorridorAxis(door.transform.position, expData.poleAPos, expData.poleBPos);
 
             
             if (door.isCorridorLink)
             {
                 string poleBId = $"{corridorId}_B";
                 float dist = Vector3.Distance(
-                    graph.GetNode(poleBId)?.position ?? door.transform.position,
+                    expData.graph.GetNode(poleBId)?.position ?? door.transform.position,
                     door.transform.position);
-                var corrLinkEdge = graph.AddRoomDoorEdge(poleBId, door.gameObject.name,
+                var corrLinkEdge = expData.graph.AddRoomDoorEdge(poleBId, door.gameObject.name,
                     false, door.transform.position, dist,
                     toNodeId: otherSide);
 
                 // Marca subito esplorato se il corridoio destinazione è già visitato
-                var targetCorrNode = graph.GetNode(otherSide) ?? graph.GetNode($"{otherSide}_A");
+                var targetCorrNode = expData.graph.GetNode(otherSide) ?? expData.graph.GetNode($"{otherSide}_A");
                 bool targetAlreadyVisited = targetCorrNode is { physicallyVisited: true };
                 if (corrLinkEdge != null && targetAlreadyVisited)
-                    graph.MarkEdgeExplored(poleBId, corrLinkEdge.id, otherSide);
+                    expData.graph.MarkEdgeExplored(poleBId, corrLinkEdge.id, otherSide);
             }
             else
             {
-                graph.AddDoorEdges(corridorId, door.gameObject.name,
+                expData.graph.AddDoorEdges(corridorId, door.gameObject.name,
                     door.elementType == DoorVarcoScript.ElementType.Door,
                     door.transform.position, side, dA, dB,
                     isCorridorLink: false);
@@ -2381,38 +1966,6 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             allCorridorDoors.Add(door.gameObject.name);
         }
     }
-    private void UpdateIdle()
-    {
-        if (string.IsNullOrEmpty(idleTargetCorridorId)) return;
-        if (navAgent.pathPending) return;
-
-        idleTimer += Time.deltaTime;
-
-        bool arrived  = navAgent.hasPath && navAgent.remainingDistance <= arrivalThreshold;
-        bool timedOut = idleTimer >= 2.0f;
-
-        if (!arrived && !timedOut) return;
-
-        idleTimer = 0f;
-        var corridorData = FindCorridorData(idleTargetCorridorId);
-        if (corridorData == null) { idleTargetCorridorId = null; return; }
-
-        Vector3 myPos     = transform.position;
-        float   distPole1 = Vector3.Distance(myPos, corridorData.Pole1Position);
-        float   distPole2 = Vector3.Distance(myPos, corridorData.Pole2Position);
-
-        bool useP1 = distPole1 <= distPole2;
-        pendingCorridorId      = idleTargetCorridorId;
-        pendingPoleId          = useP1 ? "1" : "2";
-        pendingPolePos         = useP1 ? corridorData.Pole1Position : corridorData.Pole2Position;
-        movingToPoleCorridorId = idleTargetCorridorId;
-        movingToPoleTimer      = 0f;
-
-        navAgent.isStopped = false;
-        navAgent.SetDestination(pendingPolePos);
-        state = State.MovingToPole;
-    }
-
 
     private bool AddEdgeToCorridorDoor(string roomId, string roomBeyond, DoorVarcoScript door)
     {
@@ -2425,7 +1978,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             {
                 string poleBId = $"{roomId}_B";
                 float dist = door.NavMeshDistanceTo(transform.position);
-                graph.AddRoomDoorEdge(poleBId, door.gameObject.name,
+                expData.graph.AddRoomDoorEdge(poleBId, door.gameObject.name,
                     door.elementType == DoorVarcoScript.ElementType.Door,
                     door.transform.position, dist,
                     toNodeId: roomBeyond);
@@ -2455,7 +2008,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
             string roomBeyond = (frontName == roomId) ? backName : frontName;
 
             // ← NON aggiungere se la destinazione è già stata fisicamente visitata
-            var beyondNode = graph.GetNode(roomBeyond);
+            var beyondNode = expData.graph.GetNode(roomBeyond);
             if (beyondNode is { physicallyVisited: true }) continue;
 
             if(AddEdgeToCorridorDoor(roomId, roomBeyond, door)) continue;
@@ -2465,7 +2018,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
 
             float navDist = door.NavMeshDistanceTo(transform.position);
             
-            graph.AddRoomDoorEdge(roomId, door.gameObject.name,
+            expData.graph.AddRoomDoorEdge(roomId, door.gameObject.name,
                 door.elementType == DoorVarcoScript.ElementType.Door,
                 door.transform.position, navDist,
                 toNodeId: null);
@@ -2509,7 +2062,7 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
     private string FindDoorBetweenNodes(string nodeA, string nodeB)
     {
         string dName = null;
-        foreach (var conn in buildingGraph?.connectors ?? new List<VerticalConnector>())
+        foreach (var conn in expData.buildingGraph?.connectors ?? new List<VerticalConnector>())
         {
             dName = FindDoorBetweenNodesByConnector(conn, nodeA, nodeB) ?? dName;
         }
@@ -2554,5 +2107,94 @@ private Dictionary<string, RoomObjectSnapshot> _artifactData
         if (!_roomArtifacts.ContainsKey(roomId))
             _roomArtifacts[roomId] = new HashSet<string>();
         _roomArtifacts[roomId].Add(artifactId);
+    }
+
+    public void EndRotating360()
+    {
+        navAgent.isStopped = false;
+        expData.rotationAccum = 0f;
+        Debug.Log($"[ExplMgr] 360° completato in '{expData.currentNodeId}'.");
+
+        if (expData.currentNodeId != null && expData.currentNodeId.EndsWith("_B"))
+        {
+            string corrId = expData.currentNodeId.Replace("_B", "");
+            ComputeCorridorOrders(corrId);
+        }
+
+        if (expData.inRoomMode && !string.IsNullOrEmpty(expData.currentNodeId))
+        {
+            var currentNode = expData.graph.GetNode(expData.currentNodeId);
+            bool hasUnexploredDoors = currentNode != null &&
+                                      currentNode.edges.Exists(e => e != null &&
+                                                                    e.state != EdgeState.Explored &&
+                                                                    e.edgeType == EdgeType.Door);
+            if (!hasUnexploredDoors)
+                ScanRoomDoorsFromScript(expData.currentNodeId);
+        }
+    }
+    
+    public void BeginMovingToPole(string roomId, CorridorData corridorData)
+    {
+        float d1 = Vector3.Distance(transform.position, corridorData.Pole1Position);
+        float d2 = Vector3.Distance(transform.position, corridorData.Pole2Position);
+        expData.SetPendingCorridorAndPole(roomId, 
+            d1 <= d2 ? "1" : "2", 
+            d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
+        expData.movingToPoleCorridorId = roomId;
+        expData.movingToPoleTimer      = 0f;
+        navAgent.isStopped     = false;
+        navAgent.SetDestination(d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
+        stateMachine.SetState(State.MovingToPole);
+    }
+    
+    public void BeginMovingToPole(Vector3 startPos, string startNodeId, CorridorData spawnCorridor)
+    {
+        float d1 = Vector3.Distance(startPos, spawnCorridor.Pole1Position);
+        float d2 = Vector3.Distance(startPos, spawnCorridor.Pole2Position);
+        expData.SetPendingCorridorAndPole(startNodeId, 
+            d1 <= d2 ? "1" : "2", 
+            d1 <= d2 ? spawnCorridor.Pole1Position : spawnCorridor.Pole2Position);
+        expData.movingToPoleCorridorId = startNodeId;
+        expData.movingToPoleTimer      = 0f;
+        navAgent.isStopped     = false;
+        navAgent.SetDestination(d1 <= d2 ? spawnCorridor.Pole1Position : spawnCorridor.Pole2Position);
+        stateMachine.SetState(State.MovingToPole);
+    }
+    
+    public void BeginMovingToPole1(CorridorData corridor, bool nullDoor)
+    {
+        if(nullDoor) pendingArrivalDoor = null;
+        expData.SetPendingCorridorAndPole(corridor.corridorId, "1",  corridor.Pole1Position);
+        expData.movingToPoleCorridorId = corridor.corridorId;
+        expData.movingToPoleTimer      = 0f;
+        navAgent.isStopped     = false;
+        navAgent.SetDestination(corridor.Pole1Position);
+        stateMachine.SetState(State.MovingToPole);
+    }
+    
+    public void BeginMovingToPole1(string roomId, CorridorData corridor, bool nullDoor)
+    {
+        if(nullDoor) pendingArrivalDoor = null;
+        expData.SetPendingCorridorAndPole(roomId, "1",  corridor.Pole1Position);
+        expData.movingToPoleCorridorId = roomId;
+        expData.movingToPoleTimer      = 0f;
+        navAgent.isStopped     = false;
+        navAgent.SetDestination(corridor.Pole1Position);
+        stateMachine.SetState(State.MovingToPole);
+    }
+    public void BeginTransitingToB(Vector3 poleAPos, Vector3 targetB)
+    {
+        navAgent.isStopped = false;
+        navAgent.SetDestination(targetB);
+        stateMachine.SetState(State.Transiting);
+    }
+    
+    public void MoveToNextEdge(GraphEdge nextEdge)
+    {
+        expData.currentEdge = nextEdge;
+        navAgent.isStopped = false;
+        navAgent.SetDestination(nextEdge.position);
+        stateMachine.SetState(State.MovingToDoor);
+        Debug.Log($"[ExplMgr] Prossima porta: {nextEdge.id} navDist={nextEdge.navMeshDist:F1}");
     }
 }

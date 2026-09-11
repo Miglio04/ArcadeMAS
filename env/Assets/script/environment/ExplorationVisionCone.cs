@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using script.avatar.ExplorationHelpers;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -75,6 +76,7 @@ public class ExplorationVisionCone : VisionCone
     // ── Stato interno — rilevamento poli ──────────────────────────────────────
     private HashSet<string>     reportedPoles = new HashSet<string>();
     private ExplorationManager  explorationManager;
+    private ExplorationData  explorationData;
 
     // ── Stato interno — scan transito (ex-DoorSensor) ─────────────────────────
     private bool      isTransitScanning    = false;
@@ -116,6 +118,7 @@ public class ExplorationVisionCone : VisionCone
     {
         // Replica la logica di VisionCone.Start() (che è private nel base)
         explorationManager  = transform.parent?.GetComponent<ExplorationManager>();
+        explorationData = transform.parent?.GetComponent<ExplorationData>();
         // Usiamo campi propri per il timer (i campi del base sono private)
         exploScanInterval   = 1f / Mathf.Max(1, scanFrequency);
         transitScanInterval = 1f / Mathf.Max(1, transitScanFrequency);
@@ -139,7 +142,7 @@ public class ExplorationVisionCone : VisionCone
             exploScanTimer += exploScanInterval;
             ScanForCorridorPoles();
             ScanForRoomObjects();
-            if (explorationManager != null && explorationManager.inRoomMode)
+            if (explorationData != null && explorationData.inRoomMode)
                 ScanForDoorsInRoom();
         }
     }

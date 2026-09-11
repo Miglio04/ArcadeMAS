@@ -1,3 +1,4 @@
+using script.avatar.ExplorationHelpers;
 using UnityEngine;
 
 // ============================================================
@@ -47,14 +48,14 @@ public class VerticalConnectorScript : MonoBehaviour
         if (!other.CompareTag("Agent")) return;
         triggered = true;
 
-        var manager = other.GetComponent<ExplorationManager>() 
-                ?? FindObjectOfType<ExplorationManager>();
-        if (manager == null) { Debug.LogWarning("[Connector] ExplorationManager non trovato!"); return; }
+        var expData = other.GetComponent<ExplorationData>()
+                ?? FindFirstObjectByType<ExplorationData>();
+        if (expData == null) { Debug.LogWarning("[Connector] ExplorationManager non trovato!"); return; }
 
-        var connector = manager.buildingGraph?.connectors.Find(c => c.id == connectorId);
+        var connector = expData.buildingGraph?.connectors.Find(c => c.id == connectorId);
         if (connector == null) { Debug.LogWarning($"[Connector] '{connectorId}' non trovato!"); return; }
 
-        int currentFloor = manager.currentFloor;
+        int currentFloor = expData.currentFloor;
         int resolvedTarget;
 
         if (connector.floorFrom == currentFloor)
