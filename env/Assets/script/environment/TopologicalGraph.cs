@@ -151,7 +151,7 @@ public class TopologicalGraph
             Debug.LogWarning("[Graph] AddRoomNode: id nullo/vuoto ignorato.");
             return null;
         }
-        if (nodes.ContainsKey(id))
+        if (nodes.TryGetValue(id, out _))
             return nodes[id] as RoomNode;
 
         var node = new RoomNode(id, position);
@@ -254,7 +254,7 @@ public class TopologicalGraph
 
         // Arco BW: polo B → porta
         string bwId = $"bw_{doorId}";
-       string bwSide = (side == "LEFT") ? "RIGHT" : "LEFT";
+        string bwSide = (side == "LEFT") ? "RIGHT" : "LEFT";
         if (nodeB.edges.Find(e => e?.id == bwId) == null)
         {
             nodeB.edges.Add(new GraphEdge(bwId, idB, isPhysical, EdgeType.DoorBW, doorPos)

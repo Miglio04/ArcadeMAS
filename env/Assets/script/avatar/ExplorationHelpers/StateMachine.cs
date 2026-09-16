@@ -26,12 +26,14 @@ namespace script.avatar.ExplorationHelpers
         private ExplorationData expData;
         private ExplorationManager expManager;
         private NavMeshAgent navAgent;
+        private GraphConstruction graphConstruction;
 
         void Awake()
         {
             expData = GetComponent<ExplorationData>();
             expManager = GetComponent<ExplorationManager>();
             navAgent = GetComponent<NavMeshAgent>();
+            graphConstruction = GetComponent<GraphConstruction>();
         }
         
         // --------------------------------------------------------
@@ -125,7 +127,7 @@ namespace script.avatar.ExplorationHelpers
 
         if (expData.currentEdge.doorState == DoorState.Locked)
         {
-            expData.graph.MarkEdgeExplored(expData.currentNodeId, expData.currentEdge.id, null);
+            graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
             expData.currentEdge = null;
             navAgent.isStopped = false;
             expManager.DecideNextAction();
@@ -136,7 +138,7 @@ namespace script.avatar.ExplorationHelpers
         if (door != null && !door.IsTraversable && !door.TryOpen())
         {
             expData.currentEdge.doorState = DoorState.Locked;
-            expData.graph.MarkEdgeExplored(expData.currentNodeId, expData.currentEdge.id, null);
+            graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
             expData.currentEdge = null;
             navAgent.isStopped = false;
             expManager.DecideNextAction();
@@ -176,7 +178,7 @@ namespace script.avatar.ExplorationHelpers
         {
             backtrackTimer = 0f;
             
-            expData.currentNodeId = expData.graph.CurrentNodeId;
+            expData.currentNodeId = graphConstruction.GetCurrentNodeId();
             if (string.IsNullOrEmpty(expData.currentNodeId)) { expManager.CheckFloorCompletion(); return; }
 
             Debug.Log($"[ExplMgr] Backtrack completato in {expData.currentNodeId}. Prossima azione!");
@@ -267,10 +269,8 @@ namespace script.avatar.ExplorationHelpers
         Debug.Log($"[ExplMgr] Corridoio {corridorId} individuato → mi avvicino.");
     }
 
-    public void DoBacktrack()
+    public void DoBacktrack(string targetNode, GraphNode targetData)
     {
-        (string targetNode, GraphNode targetData) = expManager.BacktrackingLoop();
-
         if (targetNode == null) { return; }
 
         // Se il backtrack target è un polo corridoio, salta il viaggio fisico

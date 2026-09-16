@@ -50,10 +50,6 @@ namespace script.avatar.ExplorationHelpers
     public Dictionary<int, TopologicalGraph> floorGraphs
         = new Dictionary<int, TopologicalGraph>();
 
-    /// <summary>Grafo del piano corrente (proprietà calcolata).</summary>
-    public TopologicalGraph graph
-        => floorGraphs.TryGetValue(currentFloor, out var g) ? g : null;
-
     /// <summary>Tutti i grafi, accessibili da BeliefTransmitter.</summary>
     public Dictionary<int, TopologicalGraph> AllFloorGraphs => floorGraphs;
 
@@ -64,9 +60,6 @@ namespace script.avatar.ExplorationHelpers
     /// </summary>
     public List<FloorConnectorLink> ConnectorLinks { get; }
         = new List<FloorConnectorLink>();
-
-    // Alias pubblico per retrocompatibilità
-    public TopologicalGraph Graph => graph;
 
     [NonSerialized]
     public string currentNodeId;
@@ -107,6 +100,11 @@ namespace script.avatar.ExplorationHelpers
     public float enteringRoomTimer   = 0f;
     [NonSerialized]
     public float enteringRoomTimeout = 3f;
+    [NonSerialized]
+    public Dictionary<string, string> registeredRoomDoors = new Dictionary<string, string>();
+    [NonSerialized]
+    public string lastCorridorLinkDoorName;
+
     
     void Awake()
     {

@@ -75,6 +75,7 @@ public class TopologicalGraphWindow : EditorWindow
     // ── Riferimento manager ──────────────────────────────────
     private ExplorationManager manager;
     private ExplorationData expData;
+    private GraphConstruction grapHconstruction;
     private TopologicalGraph   lastGraph;
     private int                lastNodeCount = 0;
 
@@ -114,7 +115,10 @@ public class TopologicalGraphWindow : EditorWindow
             manager = FindFirstObjectByType<ExplorationManager>();
 
         if (expData == null)
-            expData = FindObjectOfType<ExplorationData>();
+            expData = FindFirstObjectByType<ExplorationData>();
+        
+        if(grapHconstruction == null)
+            grapHconstruction = FindFirstObjectByType<GraphConstruction>();
         
         var graph = GetGraph();
 
@@ -723,7 +727,7 @@ public class TopologicalGraphWindow : EditorWindow
         
         // Se -1 o il piano selezionato non esiste più, usa il piano corrente
         if (selectedFloor == -1 || !expData.AllFloorGraphs.ContainsKey(selectedFloor))
-            return expData.Graph;
+            return grapHconstruction.Graph;
         
         expData.AllFloorGraphs.TryGetValue(selectedFloor, out var g);
         return g;
