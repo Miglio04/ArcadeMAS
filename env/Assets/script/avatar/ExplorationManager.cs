@@ -51,12 +51,9 @@ public struct FloorConnectorLink
 public class ExplorationManager : MonoBehaviour
 {
 
-    private HashSet<string> registeredTransitDoors = new HashSet<string>();
-    private HashSet<string> allCorridorDoors = new HashSet<string>();
+
     
     private bool explorationStarted = false;
-    
-    private DoorVarcoScript pendingArrivalDoor = null;
     
     private HashSet<string> traversedConnectors = new HashSet<string>();
 
@@ -103,23 +100,6 @@ public class ExplorationManager : MonoBehaviour
         VerticalConnectorScript.OnConnectorReached  -= HandleConnectorReached;
         
     }
-    // --------------------------------------------------------
-    // REFACTOR: EXTRACTED METHODS
-    // --------------------------------------------------------
-
-    public bool CheckAndMakeRoomRegistration(DoorVarcoScript door)
-    {
-        if  (!expData.registeredRoomDoors.ContainsKey(door.gameObject.name))
-        {
-            expData.registeredRoomDoors[door.gameObject.name] = expData.currentNodeId;
-            return false;
-        }
-        return true;
-    }
-    
-    [CanBeNull]
-    public GameObject FindRoom(string roomId, [CanBeNull] FloorNode fd) => 
-        fd?.roomObjects.Find(r => r != null && r.name == roomId);
 
     // --------------------------------------------------------
     // AVVIO
@@ -223,7 +203,7 @@ public class ExplorationManager : MonoBehaviour
         CorridorPoleScript.OnPoleTouched += stateMachine.HandlePoleTouched;
 
         // WARN: questo metodo può essere estratto?
-        var spawnCorridor = FindCorridorData(startNodeId);
+        var spawnCorridor = ExplorationUtils.FindCorridorData(startNodeId);
         if (spawnCorridor != null)
         {
             // Spawn in un corridoio: non creare un room node,
@@ -270,7 +250,7 @@ public class ExplorationManager : MonoBehaviour
         // ignora segnali di polo di altri corridoi per non interrompere il tragitto.
         if (corridorId != expData.idleTargetCorridorId)
         {
-            ResetCorridorPoles(corridorId);
+            ExplorationUtils.ResetCorridorPoles(corridorId);
             return;
         }
 
@@ -287,19 +267,10 @@ public class ExplorationManager : MonoBehaviour
 
   public void ProcessPoleTouched()
     {
-        var corridorData = FindCorridorData(expData.pendingCorridorId);
+        var corridorData = ExplorationUtils.FindCorridorData(expData.pendingCorridorId);
         if (corridorData == null) return;
-
-        bool isFirstPole = (!stateMachine.IsState(State.Transiting));
-
-        if (isFirstPole)
-        {
-            TouchedFirstPole(corridorData);
-        }
-        else
-        {
-            graphConstruction.TouchedSecondPole();
-        }
+        
+        stateMachine.ProcessPoleTouched(corridorData);
 
         expData.pendingCorridorId = null;
         expData.pendingPoleId     = null;
@@ -312,8 +283,8 @@ public class ExplorationManager : MonoBehaviour
     {
         if (!stateMachine.IsState(State.Transiting)) return;
         if (corridorId != expData.transitCorridorId) return;
-        if (registeredTransitDoors.Contains(door.gameObject.name)) return;
-        if (allCorridorDoors.Contains(door.gameObject.name)) return;
+        if (expData.registeredTransitDoors.Contains(door.gameObject.name)) return;
+        if (expData.allCorridorDoors.Contains(door.gameObject.name)) return;
 
         float corridorLength = Vector3.Distance(expData.poleAPos, expData.poleBPos);
         if (door.distFromB > corridorLength + 0.6f && door.distFromA > corridorLength + 0.6f)
@@ -327,8 +298,8 @@ public class ExplorationManager : MonoBehaviour
         if (frontName != corridorId && backName != corridorId) return;
         bool isCorrLink = door.isCorridorLink;
 
-        registeredTransitDoors.Add(door.gameObject.name);
-        if (!isCorrLink) allCorridorDoors.Add(door.gameObject.name);
+        expData.registeredTransitDoors.Add(door.gameObject.name);
+        if (!isCorrLink) expData.allCorridorDoors.Add(door.gameObject.name);
         
          if(!isCorrLink) graphConstruction.AddCorridorDoorEdges(corridorId, door, door.distFromA, door.distFromB);
         
@@ -336,21 +307,12 @@ public class ExplorationManager : MonoBehaviour
         Debug.Log($"[ExplMgr] Porta censita: {door.gameObject.name} " +
                   $"corridorLink={isCorrLink}");
     }
-
-    public string ComputeSideRelativeToCorridorAxis(Vector3 doorPos, Vector3 posA, Vector3 posB)
-    {
-        Vector3 axis   = (posB - posA).normalized; axis.y = 0f;
-        Vector3 toDoor = (doorPos - posA).normalized; toDoor.y = 0f;
-        float cross = axis.x * toDoor.z - axis.z * toDoor.x;
-        if (Mathf.Abs(cross) < 0.05f) return "RIGHT";
-        return cross > 0f ? "LEFT" : "RIGHT";
-    }
     
     //
     // REFACTOR HANDLERS VISION CONE
     //
 
-    private string ReturnNearestRoomToDoor(DoorVarcoScript door, VerticalConnector connectorForDoor)
+    private string FindNearestRoomToDoor(DoorVarcoScript door, VerticalConnector connectorForDoor)
     {
         var fd = expData.buildingGraph?.GetFloor(expData.currentFloor);
         if (fd == null) return null;
@@ -361,7 +323,7 @@ public class ExplorationManager : MonoBehaviour
         {
             if (roomId == expData.currentNodeId || roomId == connectorForDoor.id) continue;
             if (graphConstruction.IsNodeNull(roomId, out _)) continue; // già visitata
-            var rObj = FindRoom(roomId, fd);
+            var rObj = ExplorationUtils.FindRoom(roomId, fd);
             if (rObj == null) continue;
             float d = Vector3.Distance(door.transform.position, rObj.transform.position);
             if (d < minDist) { minDist = d; nearest = roomId; }
@@ -370,13 +332,11 @@ public class ExplorationManager : MonoBehaviour
         return nearest;
     }
 
-    private bool IsRoomPointedByConnectorDoorInvalid(string connRoomBeyond, VerticalConnector connectorForDoor) => 
-        string.IsNullOrEmpty(connRoomBeyond) || connRoomBeyond == expData.currentNodeId
-                                             || connRoomBeyond == connectorForDoor.id;
+    
 
     private void HandleDoorVisibleInConnectorAlreadyTransited(DoorVarcoScript door, VerticalConnector connectorForDoor)
     {
-        if (CheckAndMakeRoomRegistration(door)) return;
+        if (expData.TryRegisterRoomDoor(door)) return;
         if (!traversedConnectors.Contains(expData.currentNodeId))
             return;
 
@@ -386,13 +346,13 @@ public class ExplorationManager : MonoBehaviour
         // FIX self-loop: se GetRoomNameBeyondDoor restituisce il nodo corrente
         // (succede quando door.roomFront/roomBack non sono configurati correttamente),
         // cerco la stanza non ancora visitata del piano corrente più vicina alla porta.
-        if (IsRoomPointedByConnectorDoorInvalid(connRoomBeyond, connectorForDoor))
+        if (expData.IsRoomPointedByConnectorDoorInvalid(connRoomBeyond, connectorForDoor))
         {
-            connRoomBeyond = ReturnNearestRoomToDoor(door, connectorForDoor);
+            connRoomBeyond = FindNearestRoomToDoor(door, connectorForDoor);
         }
 
         // Se ancora non abbiamo una destinazione valida, abbandoniamo
-        if (IsRoomPointedByConnectorDoorInvalid(connRoomBeyond, connectorForDoor))
+        if (expData.IsRoomPointedByConnectorDoorInvalid(connRoomBeyond, connectorForDoor))
             return;
 
         string targetId = connRoomBeyond;
@@ -414,7 +374,7 @@ public class ExplorationManager : MonoBehaviour
     {
         string corridorId = expData.currentNodeId.Replace("_B", "");
 
-        if (allCorridorDoors.Contains(door.gameObject.name)) return;
+        if (expData.allCorridorDoors.Contains(door.gameObject.name)) return;
 
         float dB = Vector3.Distance(door.transform.position, expData.poleBPos);
         float dA = Vector3.Distance(door.transform.position, expData.poleAPos);
@@ -422,8 +382,8 @@ public class ExplorationManager : MonoBehaviour
         if (dB > 0.6f && dA > 0.6)
         { Debug.Log($"[ExplMgr] {door.gameObject.name} fuori corridoio (dB={dB:F2}) → ignorata"); return; }
 
-        registeredTransitDoors.Add(door.gameObject.name);
-        allCorridorDoors.Add(door.gameObject.name);
+        expData.registeredTransitDoors.Add(door.gameObject.name);
+        expData.allCorridorDoors.Add(door.gameObject.name);
 
         graphConstruction.AddCorridorDoorEdges(corridorId, door, dA, dB);
         
@@ -434,7 +394,7 @@ public class ExplorationManager : MonoBehaviour
 
     private void HandleConnectorDoor(DoorVarcoScript door)
     {
-        var connectorForDoor = FindConnectorForDoor(door.gameObject.name);
+        var connectorForDoor = expData.FindConnectorForDoor(door.gameObject.name);
 
         // La porta è accettata se:
         //   a) appartiene fisicamente a questa stanza (roomFront/roomBack)
@@ -445,7 +405,7 @@ public class ExplorationManager : MonoBehaviour
 
         if (!frontMatch && !backMatch && !connectorMatch)
         {
-            CheckAndMakeRoomRegistration(door);
+            expData.TryRegisterRoomDoor(door);
             return;
         }
 
@@ -504,14 +464,14 @@ public class ExplorationManager : MonoBehaviour
             && registeredFrom == expData.currentNodeId) return;
 
         // FIX spam: porte non-connettore in un nodo connettore → ignora UNA VOLTA SOLA
-        if (traversedConnectors.Contains(expData.currentNodeId) && !IsConnectorDoor(door.gameObject.name))
+        if (traversedConnectors.Contains(expData.currentNodeId) && !expData.IsConnectorDoor(door.gameObject.name))
         {
-            CheckAndMakeRoomRegistration(door);
+            expData.TryRegisterRoomDoor(door);
             return;
         }
 
         // ── PORTE CONNETTORE (scale/ascensori) vs PORTA NORMALE ──
-        if (IsConnectorDoor(door.gameObject.name))
+        if (expData.IsConnectorDoor(door.gameObject.name))
             HandleConnectorDoor(door);
         else
             HandleNonConnectorDoor(door);
@@ -566,7 +526,7 @@ public class ExplorationManager : MonoBehaviour
         // L'altro lato deve essere un corridoio già scoperto
         string otherCorrId = (front == expData.pendingCorridorId) ? back : front;
         // ← aggiungi qui, dopo otherCorrId è dichiarato
-        var otherCorrDataCheck = FindCorridorData(otherCorrId);
+        var otherCorrDataCheck = ExplorationUtils.FindCorridorData(otherCorrId);
         if (otherCorrDataCheck == null) return null;
         
         if (graphConstruction.IsNodeNull($"{otherCorrId}_A", out _) &&
@@ -574,13 +534,13 @@ public class ExplorationManager : MonoBehaviour
         return otherCorrId;
     }
 
-    private void TouchedFirstPole(CorridorData corridorData)
+    public void TouchedFirstPole(CorridorData corridorData)
     {
         graphConstruction.AddCorridorPolesToGraph(corridorData);
 
         string comingFromNodeId = expData.currentNodeId;
-        string poleAId          = $"{expData.pendingCorridorId}_A";
-        expData.currentNodeId           = poleAId;
+        string poleAId = $"{expData.pendingCorridorId}_A";
+        expData.currentNodeId = poleAId;
         graphConstruction.EnterNode(poleAId);
 
         if (!string.IsNullOrEmpty(comingFromNodeId) && 
@@ -588,7 +548,7 @@ public class ExplorationManager : MonoBehaviour
         {
             string comingCorridor = comingFromNodeId[..^2];
 
-            var linkDoor = FindDoorScript(expData.lastCorridorLinkDoorName);
+            var linkDoor = ExplorationUtils.FindDoorScript(expData.lastCorridorLinkDoorName);
 
             string f = linkDoor?.roomFront?.name ?? "";
             string b = linkDoor?.roomBack?.name  ?? "";
@@ -617,7 +577,7 @@ public class ExplorationManager : MonoBehaviour
         }
 
         expData.transitCorridorId = expData.pendingCorridorId;
-        registeredTransitDoors.Clear();
+        expData.registeredTransitDoors.Clear();
         BeginTransitingToB(expData.poleAPos, expData.poleBPos);
         
 
@@ -673,32 +633,10 @@ public class ExplorationManager : MonoBehaviour
     }
     
     // REFACTOR ENTRATA ATTRAVERSO UN ARCO
-    private string FindNextNodeId(DoorVarcoScript doorScript, GraphEdge edge)
-    {
-
-        string newNodeId;
-        if (doorScript != null && (edge.id.StartsWith("bw_") || edge.id.StartsWith("fw_")))
-        {
-            string corridorId = (expData.currentNodeId.EndsWith("_A") || expData.currentNodeId.EndsWith("_B"))
-                ? expData.currentNodeId.Substring(0, expData.currentNodeId.Length - 2)
-                : expData.currentNodeId;
-            string front = doorScript.roomFront?.name ?? "";
-            string back  = doorScript.roomBack?.name  ?? "";
-            if (front == corridorId) newNodeId = back;
-            else if (back == corridorId) newNodeId = front;
-            else newNodeId = doorScript.GetRoomNameBeyondDoor(transform.position);
-        }
-        else if (doorScript != null)
-            newNodeId = doorScript.GetRoomNameBeyondDoor(transform.position);
-        else
-            newNodeId = edge.id;
-
-        return newNodeId;
-    }
-
+    
     private void StopNavigationAtConnectorDoor(DoorVarcoScript doorScript, GraphEdge edge, string newNodeId)
     {
-        var connector = FindConnectorForDoor(doorScript.gameObject.name);
+        var connector = expData.FindConnectorForDoor(doorScript.gameObject.name);
         if (connector != null) newNodeId = connector.id;
 
         if (newNodeId == expData.currentNodeId)
@@ -759,9 +697,9 @@ public class ExplorationManager : MonoBehaviour
         {
             // Stanza: vai al centro del GameObject della stanza
             var floorData = expData.buildingGraph?.GetFloor(expData.currentFloor);
-            var roomObj   = FindRoom(newNodeId, floorData);
+            var roomObj   = ExplorationUtils.FindRoom(newNodeId, floorData);
             if (roomObj != null)
-                enterTarget = GetRoomCenter(roomObj);
+                enterTarget = ExplorationUtils.GetRoomCenter(roomObj);
             else
             {
                 // Fallback: offset oltre la porta
@@ -809,8 +747,8 @@ public class ExplorationManager : MonoBehaviour
         else
         {
             var floorData2 = expData.buildingGraph?.GetFloor(expData.currentFloor);
-            var roomObj2   = FindRoom(newNodeId, floorData2);
-            Vector3 roomCenter = roomObj2 != null ? GetRoomCenter(roomObj2) : edge.position;
+            var roomObj2   = ExplorationUtils.FindRoom(newNodeId, floorData2);
+            Vector3 roomCenter = roomObj2 != null ? ExplorationUtils.GetRoomCenter(roomObj2) : edge.position;
             graphConstruction.AddRoomAndEnterNode(newNodeId, roomCenter);
             expData.currentNodeId = newNodeId;
             stateMachine.SetState(State.EnteringRoom);
@@ -824,17 +762,17 @@ public class ExplorationManager : MonoBehaviour
     // ====================================================
     public void EnterThroughEdge(GraphEdge edge)
     {
-        var doorScript = FindDoorScript(edge.id);
+        var doorScript = ExplorationUtils.FindDoorScript(edge.id);
 
-        string newNodeId = FindNextNodeId(doorScript, edge);
+        string newNodeId = expData.FindNextNodeId(doorScript, edge);
         
-        if (doorScript != null && IsConnectorDoor(doorScript.gameObject.name))
+        if (doorScript != null && expData.IsConnectorDoor(doorScript.gameObject.name))
         {
             StopNavigationAtConnectorDoor(doorScript, edge, newNodeId);
             return;
         }
         
-        bool isTargetCorridor = FindCorridorData(newNodeId) != null;
+        bool isTargetCorridor = ExplorationUtils.FindCorridorData(newNodeId) != null;
 
         if(HasEdgeAlreadyBeenExplored(newNodeId, isTargetCorridor, edge)) return;
 
@@ -992,18 +930,6 @@ public class ExplorationManager : MonoBehaviour
     // METODO 2: IsCurrentFloorFullyExplored
     // ──────────────────────────────────────────────────────────────
 
-
-    public Vector3 GetRoomCenter(GameObject roomObj)
-    {
-        if (roomObj == null) return Vector3.zero;
-
-        var col = roomObj.GetComponentInChildren<Collider>();
-        if (col != null) return col.bounds.center;
-
-        var rend = roomObj.GetComponentInChildren<Renderer>();
-        return rend != null ? rend.bounds.center : roomObj.transform.position;
-    }
-    
     // REFACTOR: extracted methods
 
     private void NavigateToUnexploredCorridor(FloorNode floorData)
@@ -1012,19 +938,19 @@ public class ExplorationManager : MonoBehaviour
         {
             foreach (string roomId in floorData.roomIds)
             {
-                var roomObj = FindRoom(roomId, floorData);
+                var roomObj = ExplorationUtils.FindRoom(roomId, floorData);
                 
                 if (graphConstruction.CheckForRoomExistenceAndStatus(roomId, roomObj)) continue;
                 
                 // se è un corridoio, usa MovingToPole invece di EnteringRoom
-                var corridorData = FindCorridorData(roomId);
+                var corridorData = ExplorationUtils.FindCorridorData(roomId);
                 if (corridorData != null)
                 {
                     BeginMovingToPole(roomId, corridorData);
                     return;
                 }
 
-                Vector3 center = GetRoomCenter(roomObj);
+                Vector3 center = ExplorationUtils.GetRoomCenter(roomObj);
                 graphConstruction.AddRoomAndEnterNode(roomId, center);
                 graphConstruction.AddEdgeWithPreviousRoom(roomId, center);
 
@@ -1080,81 +1006,11 @@ public class ExplorationManager : MonoBehaviour
 
         return connNodeId;
     }
-
-    private (string adjRoom, string adjDoorName, Vector3 adjPos) FindAdjacentRoomThroughPhysicalDoor(string connNodeId, int targetFloor)
-    {
-        string adjRoom = null;
-        string adjDoorName = null;
-        Vector3 adjPos = Vector3.zero;
-        var arrDoor = pendingArrivalDoor;
-        string front = arrDoor.roomFront?.name;
-        string back  = arrDoor.roomBack?.name;
-        string notNullCandidate = string.IsNullOrEmpty(front) ? back : front;
-        string candidate = (back == connNodeId)
-            ? front
-            : notNullCandidate;
-        candidate = (front == connNodeId) ? back : candidate;
-
-        var fdAdj = expData.buildingGraph?.GetFloor(targetFloor);
-        if (!string.IsNullOrEmpty(candidate) && candidate != connNodeId
-                                             && (fdAdj?.roomIds.Contains(candidate) ?? false))
-        {
-            adjRoom     = candidate;
-            adjDoorName = arrDoor.gameObject.name;
-            var rObj = FindRoom(adjRoom, fdAdj);
-            adjPos      = rObj != null ? GetRoomCenter(rObj) : arrDoor.transform.position;
-        }
-        return (adjRoom, adjDoorName, adjPos);
-    }
-
-    private (string adjRoom, string adjDoorName, Vector3 adjPos) FindAdjacentRoomThroughRoomNodes(string connNodeId, int targetFloor)
-    {
-        string adjRoom = null;
-        string adjDoorName = null;
-        Vector3 adjPos = Vector3.zero;
-        var fdAdj = expData.buildingGraph?.GetFloor(targetFloor);
-        if (fdAdj != null)
-        {
-            foreach (string rid in fdAdj.roomIds)
-            {
-                string dName = FindDoorBetweenNodes(connNodeId, rid);
-                if (string.IsNullOrEmpty(dName)) continue;
-                var rObj = FindRoom(rid, fdAdj);
-                if (rObj == null) continue;
-                adjRoom     = rid;
-                adjDoorName = dName;
-                adjPos      = GetRoomCenter(rObj);
-                break;
-            }
-        }
-        return (adjRoom, adjDoorName, adjPos);
-    }
-
-    private (string adjRoom, string adjDoorName, Vector3 adjPos) FindAdjacentRoom(string connNodeId, int targetFloor)
-    {
-        string adjRoom = null;
-        string adjDoorName = null;
-        Vector3 adjPos = Vector3.zero;
-        // Tentativo 1: usa la porta di arrivo fisica
-        if (pendingArrivalDoor != null)
-        {
-            (adjRoom, adjDoorName, adjPos) = FindAdjacentRoomThroughPhysicalDoor(connNodeId, targetFloor);
-        }
-        pendingArrivalDoor = null;
-
-        // Tentativo 2: fallback tramite FindDoorBetweenNodes
-        if (string.IsNullOrEmpty(adjRoom))
-        {
-            (adjRoom, adjDoorName, adjPos) = FindAdjacentRoomThroughRoomNodes(connNodeId, targetFloor);
-        }
-
-        return (adjRoom, adjDoorName, adjPos);
-    }
-
-    private bool IsAdjacentRoomACorridorWithSetup(string adjRoom)
+    
+    private bool IsAdjacentRoomACorridorWithNavigation(string adjRoom)
     {
         // Se adjRoom è un corridoio con poli, non trattarlo come stanza normale
-        var adjCorridor = FindCorridorData(adjRoom);
+        var adjCorridor = ExplorationUtils.FindCorridorData(adjRoom);
         if (adjCorridor != null)
         {
             BeginMovingToPole1(adjRoom, adjCorridor, false);
@@ -1187,16 +1043,14 @@ public class ExplorationManager : MonoBehaviour
     {
         // Checks both for door and edge existence
         if (string.IsNullOrEmpty(dName)) return null;
-        bool isConnTrigger = FindConnectorForDoor(dName) != null;
+        bool isConnTrigger = expData.FindConnectorForDoor(dName) != null;
         if (isConnTrigger) return null;
         var existingEdge = graphConstruction.GetNode(connNodeId)?.edges
             .Find(e => e?.toNodeId == rid || e?.id == dName);
         if (existingEdge != null) return null;
-        var roomObj = FindRoom(rid, fd2);
+        var roomObj = ExplorationUtils.FindRoom(rid, fd2);
         return roomObj;
     }
-    
-   
 
     private bool HandleNextFloorArrival(string connNodeId, int targetFloor)
     {
@@ -1211,18 +1065,20 @@ public class ExplorationManager : MonoBehaviour
             }
             if (!string.IsNullOrEmpty(connNodeId))
             {
-                CorridorData exitCorridor = FindCorridorContainingPosition(navAgent.transform.position, 3f);
+                CorridorData exitCorridor = ExplorationUtils.FindCorridorContainingPosition(navAgent.transform.position, 3f);
                 if (exitCorridor != null)
                 { 
                     BeginMovingToPole1(exitCorridor, true);
                     return true;  // ← salta Tentativo 1/2 e il blocco corridoio finale
                 }
 
-                (string adjRoom, string adjDoorName, Vector3 adjPos) = FindAdjacentRoom(connNodeId, targetFloor);
+                (string adjRoom, string adjDoorName, Vector3 adjPos) = expData.FindAdjacentRoom(connNodeId, targetFloor);
+                
+                expData.pendingArrivalDoor = null;
                 
                 if (!string.IsNullOrEmpty(adjRoom))
                 {
-                    if (IsAdjacentRoomACorridorWithSetup(adjRoom)) return true;
+                    if (IsAdjacentRoomACorridorWithNavigation(adjRoom)) return true;
 
                     // adjRoom è una stanza normale, gestione originale
                     SetupAdjacentRoomAsRoom(adjRoom, adjPos, connNodeId, adjDoorName);
@@ -1269,10 +1125,9 @@ public class ExplorationManager : MonoBehaviour
         expData.currentFloor     = targetFloor;
         expData.pendingConnector = null;
         
-
         expData.registeredRoomDoors.Clear();
-        registeredTransitDoors.Clear();
-        allCorridorDoors.Clear();
+        expData.registeredTransitDoors.Clear();
+        expData.allCorridorDoors.Clear();
 
         if (HandleNextFloorArrival(connNodeId, targetFloor)) return;
 
@@ -1280,7 +1135,7 @@ public class ExplorationManager : MonoBehaviour
         expData.movingToPoleCorridorId = null;
         expData.idleTargetCorridorId   = null;
 
-        CorridorData spawnCorridor = FindCorridorContainingPosition(navAgent.transform.position, 3f);
+        CorridorData spawnCorridor = ExplorationUtils.FindCorridorContainingPosition(navAgent.transform.position, 3f);
         if (spawnCorridor == null) { 
             StartRotation360(isRoom: true);
             return;
@@ -1342,7 +1197,7 @@ public class ExplorationManager : MonoBehaviour
 
          // ── 7. Aggiorna current_room col nodo reale di fine esplorazione ──
         var loc = GetComponent<LocalizationTest>();  
-        loc?.ForceCurrentRoomAndSend(NormalizeRoomId(expData.currentNodeId));
+        loc?.ForceCurrentRoomAndSend(ExplorationUtils.NormalizeRoomId(expData.currentNodeId));
         Debug.Log($"[ExplMgr] Edificio '{expData.buildingId}' esplorato. " +
                 $"Piani: {expData.floorGraphs.Count}  Link: {expData.ConnectorLinks.Count}  " +
                 $"Distanze: {roomPairs.Count}  Snapshot salvato: {saved}");
@@ -1351,81 +1206,6 @@ public class ExplorationManager : MonoBehaviour
     // ====================================================
     // HELPER
     // ====================================================
-    public CorridorData FindCorridorData(string id)
-    {
-        foreach (var c in FindObjectsByType<CorridorData>(FindObjectsSortMode.None))
-            if (c.corridorId == id) return c;
-        return null;
-    }
-
-    private CorridorData FindCorridorContainingPosition(Vector3 pos, float radius)
-    {
-        foreach (var c in FindObjectsByType<CorridorData>(FindObjectsSortMode.None))
-        {
-            // La posizione è tra i due poli (proiezione sull'asse del corridoio)
-            Vector3 axis = c.Pole2Position - c.Pole1Position;
-            float len    = axis.magnitude;
-            if (len < 0.01f) continue;
-            Vector3 dir  = axis / len;
-            float proj   = Vector3.Dot(pos - c.Pole1Position, dir);
-            // Distanza laterale dall'asse
-            Vector3 onAxis  = c.Pole1Position + dir * Mathf.Clamp(proj, 0f, len);
-            float lateralDist = Vector3.Distance(pos, onAxis);
-            if (lateralDist <= radius && proj >= -radius && proj <= len + radius)
-                return c;
-        }
-        return null;
-    }
-    private string NormalizeRoomId(string nodeId)
-    {
-        if (string.IsNullOrEmpty(nodeId)) return nodeId;
-        if (nodeId.EndsWith("_A") || nodeId.EndsWith("_B"))
-            return nodeId.Substring(0, nodeId.Length - 2);   // corridoio2_B → corridoio2
-        return nodeId;
-    }
-
-    [CanBeNull]
-    public DoorVarcoScript FindDoorScript([CanBeNull] string name)
-    {
-        if (name == null) return null;
-        string cleanName = name;
-        if (name.StartsWith("fw_"))   cleanName = name.Substring(3);
-        if (name.StartsWith("bw_"))   cleanName = name.Substring(3);
-
-        var go = GameObject.Find(cleanName);
-        if (go == null) return null;
-        return go.GetComponentInChildren<DoorVarcoScript>();
-    }
-
-    private bool IsConnectorDoor(string doorName)
-    {
-        if (expData.buildingGraph == null) return false;
-        foreach (var connector in expData.buildingGraph.connectors)
-        {
-            if (connector.triggerStartObject?.name == doorName) return true;
-            if (connector.triggerEndObject?.name   == doorName) return true;
-        }
-        return false;
-    }
-    private VerticalConnector FindConnectorForDoor(string doorName)
-    {
-        if (expData.buildingGraph == null) return null;
-        foreach (var c in expData.buildingGraph.connectors)
-        {
-            if (c.triggerStartObject?.name == doorName) return c;
-            if (c.triggerEndObject?.name == doorName) return c;
-        }
-        return null;
-    }
-
-    public void ResetCorridorPoles(string corridorId)
-    {
-        foreach (var pole in FindObjectsByType<CorridorPoleScript>(FindObjectsSortMode.None))
-        {
-            if (pole.corridorId == corridorId)
-                pole.ResetTrigger();
-        }
-    }
 
     //PORTE PER LE SCALE
     public IEnumerator TraverseStairsThen(int targetFloor) {
@@ -1484,11 +1264,6 @@ public class ExplorationManager : MonoBehaviour
         ExecuteFloorChange(targetFloor);
     }
 
-    private bool IsCorridorDoorAlreadyRegistered(DoorVarcoScript door) => 
-        !door.isCorridorLink 
-        && (registeredTransitDoors.Contains(door.gameObject.name) 
-            || allCorridorDoors.Contains(door.gameObject.name));
-
     public void ScanCorridorDoorsFromScript(string corridorId)
     {
         foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
@@ -1498,31 +1273,29 @@ public class ExplorationManager : MonoBehaviour
 
             if (frontName != corridorId && backName != corridorId) continue;
 
-            if (IsCorridorDoorAlreadyRegistered(door)) { continue; }
+            if (expData.IsCorridorDoorAlreadyRegistered(door)) { continue; }
             
             graphConstruction.AddEdgesToCorridorDoor(corridorId, door, frontName, backName);
 
-            registeredTransitDoors.Add(door.gameObject.name);
-            allCorridorDoors.Add(door.gameObject.name);
+            expData.registeredTransitDoors.Add(door.gameObject.name);
+            expData.allCorridorDoors.Add(door.gameObject.name);
         }
     }
 
-    private bool IsRoomDoorAlreadyRegistered(string roomId, DoorVarcoScript door)  => 
-        expData.registeredRoomDoors.TryGetValue(door.gameObject.name, out string from)
-               && from == roomId;
+    
 
     private void ScanRoomDoorsFromScript(string roomId)
     {
         foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
         {
-            if (door.roomFront == null || door.roomBack == null || IsConnectorDoor(door.gameObject.name)) continue;
+            if (door.roomFront == null || door.roomBack == null || expData.IsConnectorDoor(door.gameObject.name)) continue;
 
             string frontName = door.roomFront.name;
             string backName  = door.roomBack.name;
             if (frontName != roomId && backName != roomId) continue;
 
             // Con il nuovo Dictionary: controlla se già registrata da QUESTA stanza
-            if (IsRoomDoorAlreadyRegistered(roomId, door)) continue;
+            if (expData.IsRoomDoorAlreadyRegistered(roomId, door)) continue;
             string roomBeyond = (frontName == roomId) ? backName : frontName;
 
             // ← NON aggiungere se la destinazione è già stata fisicamente visitata
@@ -1530,65 +1303,7 @@ public class ExplorationManager : MonoBehaviour
         }
     }
 
-
-    private string FindDoorBetweenNodesByConnector(VerticalConnector conn, string nodeA, string nodeB)
-    {
-        
-        bool aIsStart = (conn.id == nodeA || conn.triggerStartObject.name == nodeA);
-        bool aIsEnd = (conn.id == nodeA || conn.triggerEndObject.name == nodeA);
-
-        //verifica anche che nodeB corrisponda al lato opposto
-        bool bMatchesEnd = (conn.id == nodeB || conn.triggerEndObject.name == nodeB);
-        bool bMatchesStart = (conn.id == nodeB || conn.triggerStartObject.name == nodeB);
-        
-        if (aIsStart && bMatchesEnd && conn.triggerEndObject != null)
-            return conn.triggerEndObject.name;
-        if (aIsEnd && bMatchesStart && conn.triggerStartObject != null)
-            return conn.triggerStartObject.name;
-
-        return null;
-    }
-
-    private string FindDoorBetweenNodesByDoor(DoorVarcoScript d, string  nodeA, string nodeB)
-    {
-        
-        string front = d.roomFront?.name;
-        string back = d.roomBack?.name;
-
-        if (front != null && back != null &&
-            ((front == nodeA && back == nodeB) || (front == nodeB && back == nodeA)))
-        {
-            return d.gameObject.name;
-        }
-
-        return null;
-    }
-
-    public string FindDoorBetweenNodes(string nodeA, string nodeB)
-    {
-        string dName = null;
-        foreach (var conn in expData.buildingGraph?.connectors ?? new List<VerticalConnector>())
-        {
-            dName = FindDoorBetweenNodesByConnector(conn, nodeA, nodeB) ?? dName;
-        }
-        // fallback DoorVarcoScript — invariato
-        foreach (var d in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
-        {
-            dName = FindDoorBetweenNodesByDoor(d, nodeA, nodeB) ?? dName;
-        }
-        return dName;
-    }
-
-    public float NavMeshDist(Vector3 a, Vector3 b)
-    {
-        var path = new NavMeshPath();
-        if (!NavMesh.CalculatePath(a, b, NavMesh.AllAreas, path)) return -1f;
-        if (path.status == NavMeshPathStatus.PathInvalid) return -1f;
-        float d = 0f;
-        for (int i = 1; i < path.corners.Length; i++)
-            d += Vector3.Distance(path.corners[i - 1], path.corners[i]);
-        return d;
-    }
+    
 
     public void RegisterDiscoveredObject(string artifactId, string roomId,
         string artifactType, int wsPort, float x, float y, float z)
@@ -1667,7 +1382,7 @@ public class ExplorationManager : MonoBehaviour
     
     public void BeginMovingToPole1(CorridorData corridor, bool nullDoor)
     {
-        if(nullDoor) pendingArrivalDoor = null;
+        if(nullDoor) expData.pendingArrivalDoor = null;
         expData.SetPendingCorridorAndPole(corridor.corridorId, "1",  corridor.Pole1Position);
         expData.movingToPoleCorridorId = corridor.corridorId;
         expData.movingToPoleTimer      = 0f;
@@ -1678,7 +1393,7 @@ public class ExplorationManager : MonoBehaviour
     
     public void BeginMovingToPole1(string roomId, CorridorData corridor, bool nullDoor)
     {
-        if(nullDoor) pendingArrivalDoor = null;
+        if(nullDoor) expData.pendingArrivalDoor = null;
         expData.SetPendingCorridorAndPole(roomId, "1",  corridor.Pole1Position);
         expData.movingToPoleCorridorId = roomId;
         expData.movingToPoleTimer      = 0f;

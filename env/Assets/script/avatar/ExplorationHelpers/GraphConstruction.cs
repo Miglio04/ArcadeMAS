@@ -114,9 +114,9 @@ namespace script.avatar.ExplorationHelpers
         public void HandleDoorVisibleInConnector(DoorVarcoScript door, VerticalConnector connectorForDoor)
         {
             string corridorBeyond = door.GetRoomNameBeyondDoor(transform.position);
-            if (!expManager.CheckAndMakeRoomRegistration(door))
+            if (!expData.TryRegisterRoomDoor(door))
             {
-                if (!string.IsNullOrEmpty(corridorBeyond) && expManager.FindCorridorData(corridorBeyond) != null)
+                if (!string.IsNullOrEmpty(corridorBeyond) && ExplorationUtils.FindCorridorData(corridorBeyond) != null)
                 {
                     AddEdgeToUnexploredCorridor(door, corridorBeyond);
                 }
@@ -147,7 +147,7 @@ namespace script.avatar.ExplorationHelpers
             if (graph.GetNode(targetId) == null)
             {
                 var floorData = expData.buildingGraph?.GetFloor(expData.currentFloor);
-                var roomObj = expManager.FindRoom(targetId, floorData);
+                var roomObj = ExplorationUtils.FindRoom(targetId, floorData);
                 if (roomObj != null)
                     graph.AddRoomNode(targetId, roomObj.transform.position);
             }
@@ -174,7 +174,7 @@ namespace script.avatar.ExplorationHelpers
 
         public void AddCorridorDoorEdges(string corridorId, DoorVarcoScript door, float dA, float dB)
         {
-            string computedSide = expManager.ComputeSideRelativeToCorridorAxis(
+            string computedSide = ExplorationUtils.ComputeSideRelativeToCorridorAxis(
                 door.transform.position, expData.poleAPos, expData.poleBPos);
 
             graph.AddDoorEdges(corridorId, door.gameObject.name,
@@ -241,8 +241,8 @@ namespace script.avatar.ExplorationHelpers
 
             Vector3 fromPos = graph.GetNode(fromNode)?.position ?? Vector3.zero;
             Vector3 toPos = graph.GetNode(toNode)?.position ?? Vector3.zero;
-            float distFromDoor = expManager.NavMeshDist(fromPos, doorPos);
-            float distDoorTo = expManager.NavMeshDist(doorPos, toPos);
+            float distFromDoor = ExplorationUtils.NavMeshDist(fromPos, doorPos);
+            float distDoorTo = ExplorationUtils.NavMeshDist(doorPos, toPos);
             float dist = (distFromDoor >= 0f && distDoorTo >= 0f)
                 ? distFromDoor + distDoorTo
                 : Vector3.Distance(fromPos, toPos);
@@ -256,7 +256,7 @@ namespace script.avatar.ExplorationHelpers
             float dB = Vector3.Distance(door.transform.position, expData.poleBPos);
             string otherSide = (frontName == corridorId) ? backName : frontName;
             string side =
-                expManager.ComputeSideRelativeToCorridorAxis(door.transform.position, expData.poleAPos,
+                ExplorationUtils.ComputeSideRelativeToCorridorAxis(door.transform.position, expData.poleAPos,
                     expData.poleBPos);
 
             if (door.isCorridorLink)
@@ -283,14 +283,14 @@ namespace script.avatar.ExplorationHelpers
                     isCorridorLink: false);
             }
         }
-        
-        public bool AddEdgeToCorridorDoor(string roomId, string roomBeyond, DoorVarcoScript door)
+
+        private bool AddEdgeToCorridorDoor(string roomId, string roomBeyond, DoorVarcoScript door)
         {
-            bool leadsToCorridor = expManager.FindCorridorData(roomBeyond) != null;
+            bool leadsToCorridor = ExplorationUtils.FindCorridorData(roomBeyond) != null;
             if (leadsToCorridor)
             {
                 // Se la stanza corrente ha poli propri, aggiungi arco dal polo B
-                bool currentHasPoles = expManager.FindCorridorData(roomId) != null;
+                bool currentHasPoles = ExplorationUtils.FindCorridorData(roomId) != null;
                 if (currentHasPoles)
                 {
                     string poleBId = $"{roomId}_B";
@@ -329,10 +329,10 @@ namespace script.avatar.ExplorationHelpers
                 foreach (string rid in fd2.roomIds)
                 {
                     // cerca la porta fisica tra connettore e stanza
-                    string dName = expManager.FindDoorBetweenNodes(connNodeId, rid);
+                    string dName = expData.FindDoorBetweenNodes(connNodeId, rid);
                     GameObject roomObj = expManager.FindConnectorRoomWithGuards(dName, connNodeId, rid, fd2);
                     if (roomObj == null) return;
-                    Vector3 rCenter = expManager.GetRoomCenter(roomObj);
+                    Vector3 rCenter = ExplorationUtils.GetRoomCenter(roomObj);
                     float d = Vector3.Distance(graph.GetNode(connNodeId).position, rCenter);
                     graph.AddRoomDoorEdge(connNodeId, dName, false, rCenter, d, rid);
                 }
@@ -349,7 +349,7 @@ namespace script.avatar.ExplorationHelpers
                 {
                     float dist = Vector3.Distance(prevNode.position, center);
                     // Trova la porta fisica più vicina al nodo connettore corrente
-                    string synDoorName = expManager.FindDoorBetweenNodes(expData.currentNodeId, roomId);
+                    string synDoorName = expData.FindDoorBetweenNodes(expData.currentNodeId, roomId);
                     if (string.IsNullOrEmpty(synDoorName))
                         synDoorName = $"nav_{expData.currentNodeId}_{roomId}";
 
@@ -429,10 +429,10 @@ namespace script.avatar.ExplorationHelpers
             return true;
         }
 
-        public bool HasRoomAlreadyBeenExplored(string roomId)
+        private bool HasRoomAlreadyBeenExplored(string roomId)
         {
             // Skip se la porta fisica verso questa stanza è già stata esplorata (anche con nome nodo diverso)
-            string doorCheck = expManager.FindDoorBetweenNodes(expData.currentNodeId, roomId);
+            string doorCheck = expData.FindDoorBetweenNodes(expData.currentNodeId, roomId);
             if (!string.IsNullOrEmpty(doorCheck))
             {
                 var currNode = graph.GetNode(expData.currentNodeId);
@@ -509,7 +509,7 @@ namespace script.avatar.ExplorationHelpers
         
         public (string targetNode, GraphNode targetData) BacktrackingLoop()
         {
-            string    targetNode = null;
+            string    targetNode;
             GraphNode targetData = null;
 
             while (true)
@@ -579,7 +579,7 @@ namespace script.avatar.ExplorationHelpers
             var node = graph.GetNode(expData.currentNodeId);
             if (node == null) { expManager.DoBacktrack(); return null; }
 
-            GraphEdge nextEdge = null;
+            GraphEdge nextEdge;
 
             if (node.type == NodeType.CorridorPoleB)
             {

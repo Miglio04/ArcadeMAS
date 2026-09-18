@@ -134,7 +134,7 @@ namespace script.avatar.ExplorationHelpers
             return;
         }
 
-        var door = expManager.FindDoorScript(expData.currentEdge.id);
+        var door = ExplorationUtils.FindDoorScript(expData.currentEdge.id);
         if (door != null && !door.IsTraversable && !door.TryOpen())
         {
             expData.currentEdge.doorState = DoorState.Locked;
@@ -215,7 +215,7 @@ namespace script.avatar.ExplorationHelpers
         if (!arrived && !timedOut) return;
 
         idleTimer = 0f;
-        var corridorData = expManager.FindCorridorData(expData.idleTargetCorridorId);
+        var corridorData = ExplorationUtils.FindCorridorData(expData.idleTargetCorridorId);
         if (corridorData == null) { expData.idleTargetCorridorId = null; return; }
 
         expManager.BeginMovingToPole(transform.position, expData.idleTargetCorridorId, corridorData);
@@ -251,7 +251,7 @@ namespace script.avatar.ExplorationHelpers
             return;
         }
 
-        expManager.ResetCorridorPoles(corridorId);
+        ExplorationUtils.ResetCorridorPoles(corridorId);
     }
     
     public void HandleCorridorPoleVisible(string corridorId, string poleId, Vector3 polePos)
@@ -259,7 +259,7 @@ namespace script.avatar.ExplorationHelpers
         if (state != State.Idle && state != State.Backtracking) return;
         if (!string.IsNullOrEmpty(expData.idleTargetCorridorId) && corridorId != expData.idleTargetCorridorId) return;
 
-        var corridorData = expManager.FindCorridorData(corridorId);
+        var corridorData = ExplorationUtils.FindCorridorData(corridorId);
         if (corridorData == null) return;
         
         if (expData.movingToPoleCorridorId == corridorId) return;
@@ -299,6 +299,20 @@ namespace script.avatar.ExplorationHelpers
         action?.Invoke();
         SetState(endingState);
         return true;
+    }
+
+    public void ProcessPoleTouched(CorridorData corridorData)
+    {
+        bool isFirstPole = (!IsState(State.Transiting));
+
+        if (isFirstPole)
+        {
+            expManager.TouchedFirstPole(corridorData);
+        }
+        else
+        {
+            graphConstruction.TouchedSecondPole();
+        }
     }
     }
 }
