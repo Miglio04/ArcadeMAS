@@ -1,6 +1,5 @@
 ﻿using System;
 using UnityEngine;
-using UnityEngine.AI;
 
 namespace script.avatar.ExplorationHelpers
 {
@@ -25,14 +24,14 @@ namespace script.avatar.ExplorationHelpers
         
         private ExplorationData expData;
         private ExplorationManager expManager;
-        private NavMeshAgent navAgent;
         private GraphConstruction graphConstruction;
+        private ExplorationNavigation expNav;
 
         void Awake()
         {
             expData = GetComponent<ExplorationData>();
             expManager = GetComponent<ExplorationManager>();
-            navAgent = GetComponent<NavMeshAgent>();
+            expNav = GetComponent<ExplorationNavigation>();
             graphConstruction = GetComponent<GraphConstruction>();
         }
         
@@ -40,9 +39,8 @@ namespace script.avatar.ExplorationHelpers
         // UPDATE
         // --------------------------------------------------------
         
-        void Update()
+        public void Tick()
         {
-            // WARN: con la mappa è più facile da leggere e più veloce, se voglio aggiungere altri metodi in futuro
             switch (state)
             {
                 case State.MovingToPole:      UpdateMovingToPole();      break;
@@ -70,8 +68,8 @@ namespace script.avatar.ExplorationHelpers
                 return;
             }
 
-            if (navAgent.pathPending) return;
-            if (navAgent.remainingDistance < expData.poleArrivalThreshold)
+            if (expNav.PathPending) return;
+            if (expNav.ArrivedAtPole)
             {
                 expData.movingToPoleCorridorId = null;
                 expData.movingToPoleTimer = 0f;
@@ -83,10 +81,9 @@ namespace script.avatar.ExplorationHelpers
         {
             transitTimer += Time.deltaTime;
 
-            if (navAgent.pathPending && transitTimer < expData.poleTimeoutSeconds) return;
+            if (expNav.PathPending && transitTimer < expData.poleTimeoutSeconds) return;
 
-            if (navAgent.remainingDistance < expData.poleArrivalThreshold 
-                || transitTimer >= expData.poleTimeoutSeconds)
+            if (expNav.ArrivedAtPole || transitTimer >= expData.poleTimeoutSeconds)
             {
                 transitTimer = 0f;
                 expData.pendingCorridorId = expData.transitCorridorId;
@@ -98,7 +95,7 @@ namespace script.avatar.ExplorationHelpers
         
         private void UpdateRotating360()
         {
-            navAgent.isStopped = true;
+            expNav.Stop();
             float step = expData.rotationSpeed * Time.deltaTime;
             transform.Rotate(0, step, 0);
             expData.rotationAccum += step;
@@ -106,18 +103,17 @@ namespace script.avatar.ExplorationHelpers
             if (expData.rotationAccum >= 360f)
             {
                 expManager.EndRotating360();
-
                 expManager.DecideNextAction();
             }
         }
 
         private void UpdateMovingToDoor()
     {
-        if (navAgent.pathPending) return;
-        if (navAgent.remainingDistance <= expData.inspectionDistance)
+        if (expNav.PathPending) return;
+        if (expNav.InsideInspectionDistance)
         {
-            navAgent.isStopped = true;
-            state              = State.InspectingDoor;
+            expNav.Stop();
+            state = State.InspectingDoor;
         }
     }
 
@@ -129,7 +125,6 @@ namespace script.avatar.ExplorationHelpers
         {
             graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
             expData.currentEdge = null;
-            navAgent.isStopped = false;
             expManager.DecideNextAction();
             return;
         }
@@ -140,7 +135,6 @@ namespace script.avatar.ExplorationHelpers
             expData.currentEdge.doorState = DoorState.Locked;
             graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
             expData.currentEdge = null;
-            navAgent.isStopped = false;
             expManager.DecideNextAction();
             return;
         }
@@ -148,15 +142,12 @@ namespace script.avatar.ExplorationHelpers
         expManager.EnterThroughEdge(expData.currentEdge);
     }
 
-
-
     private void UpdateEnteringRoom()
     {
-        if (navAgent.pathPending) return;
+        if (expNav.PathPending) return;
         expData.enteringRoomTimer += Time.deltaTime;
 
-      if (navAgent.remainingDistance < expData.arrivalThreshold && !navAgent.pathPending 
-          || expData.enteringRoomTimer >= expData.enteringRoomTimeout)
+      if (expNav.Arrived || expData.enteringRoomTimer >= expData.enteringRoomTimeout)
         {
             expData.enteringRoomTimer = 0f;
             expManager.StartRotation360(isRoom: true);
@@ -167,11 +158,11 @@ namespace script.avatar.ExplorationHelpers
 
     private void UpdateBacktracking()
     {
-        if (navAgent.pathPending) return;
+        if (expNav.PathPending) return;
 
         backtrackTimer += Time.deltaTime;
-        bool arrived    = navAgent.hasPath && navAgent.remainingDistance <= expData.arrivalThreshold;
-        bool pathFailed = !navAgent.hasPath;
+        bool arrived = expNav.Arrived;
+        bool pathFailed = !expNav.HasPath;
         bool timedOut   = backtrackTimer >= expData.backtrackTimeout;
 
         if (arrived || pathFailed || timedOut)
@@ -189,27 +180,26 @@ namespace script.avatar.ExplorationHelpers
 
     private void UpdateMovingToConnector()
     {
-        if (navAgent.pathPending) return;
-        if (expData.pendingConnector != null &&
-            navAgent.remainingDistance <= expData.arrivalThreshold * 2f)
+        if (expNav.PathPending) return;
+        if (expData.pendingConnector != null && expNav.ArrivedAtConnector)
         {
             int targetFloor = (expData.pendingConnector.floorFrom == expData.currentFloor)
                 ? expData.pendingConnector.floorTo
                 : expData.pendingConnector.floorFrom;
             state = State.TraversingStairs;
             
-            StartCoroutine(expManager.TraverseStairsThen(targetFloor));
+            StartCoroutine(expNav.TraverseStairsThen(targetFloor));
         }
     }
     
     private void UpdateIdle()
     {
         if (string.IsNullOrEmpty(expData.idleTargetCorridorId)) return;
-        if (navAgent.pathPending) return;
+        if (expNav.PathPending) return;
 
         idleTimer += Time.deltaTime;
 
-        bool arrived  = navAgent.hasPath && navAgent.remainingDistance <= expData.arrivalThreshold;
+        bool arrived  = expNav.Arrived;
         bool timedOut = idleTimer >= 2.0f;
 
         if (!arrived && !timedOut) return;
@@ -218,7 +208,8 @@ namespace script.avatar.ExplorationHelpers
         var corridorData = ExplorationUtils.FindCorridorData(expData.idleTargetCorridorId);
         if (corridorData == null) { expData.idleTargetCorridorId = null; return; }
 
-        expManager.BeginMovingToPole(transform.position, expData.idleTargetCorridorId, corridorData);
+        expNav.BeginMovingToPole(transform.position, expData.idleTargetCorridorId, corridorData);
+        SetState(State.MovingToPole);
     }
 
     public void SetState(State otherState) => state = otherState;
@@ -264,7 +255,8 @@ namespace script.avatar.ExplorationHelpers
         
         if (expData.movingToPoleCorridorId == corridorId) return;
         
-        expManager.BeginMovingToPole(transform.position, corridorId, corridorData);
+        expNav.BeginMovingToPole(transform.position, corridorId, corridorData);
+        SetState(State.MovingToPole);
 
         Debug.Log($"[ExplMgr] Corridoio {corridorId} individuato → mi avvicino.");
     }
@@ -286,8 +278,7 @@ namespace script.avatar.ExplorationHelpers
         }
 
         backtrackTimer = 0f;
-        navAgent.isStopped = false;
-        navAgent.SetDestination(targetData.position);
+        expNav.BacktrackToNode(targetData.position);
         state = State.Backtracking;
     }
 
@@ -301,11 +292,17 @@ namespace script.avatar.ExplorationHelpers
         return true;
     }
 
+    public bool TransitionWithCondition(State endingState, Func<bool> condition)
+    {
+        if (condition?.Invoke() != true) return false;
+        SetState(endingState);
+        return true;
+    }
+
     public void ProcessPoleTouched(CorridorData corridorData)
     {
-        bool isFirstPole = (!IsState(State.Transiting));
 
-        if (isFirstPole)
+        if (!IsState(State.Transiting))
         {
             expManager.TouchedFirstPole(corridorData);
         }

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
+using script.avatar;
 using script.avatar.ExplorationHelpers;
 using UnityEngine;
 using UnityEditor;

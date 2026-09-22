@@ -88,20 +88,22 @@ namespace script.avatar.ExplorationHelpers
         [NonSerialized] public DoorVarcoScript pendingArrivalDoor = null;
         [NonSerialized] public HashSet<string> registeredTransitDoors = new HashSet<string>();
         [NonSerialized] public HashSet<string> allCorridorDoors = new HashSet<string>();
-
-
-        void Awake()
-        {
-            if (buildingGraph != null)
-                foreach (var floor in buildingGraph.floors)
-                    floor.explored = false;
-        }
+        [NonSerialized] public HashSet<string> traversedConnectors = new HashSet<string>();
 
         public void SetPendingCorridorAndPole(string corridorId, string poleId, Vector3 polePos)
         {
             pendingCorridorId = corridorId;
             pendingPoleId = poleId;
             pendingPolePos = polePos;
+        }
+
+        
+
+        void Awake()
+        {
+            if (buildingGraph != null)
+                foreach (var floor in buildingGraph.floors)
+                    floor.explored = false;
         }
 
         public bool TryRegisterRoomDoor(DoorVarcoScript door)

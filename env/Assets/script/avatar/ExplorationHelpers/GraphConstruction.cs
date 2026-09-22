@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -111,22 +112,6 @@ namespace script.avatar.ExplorationHelpers
             return false;
         }
 
-        public void HandleDoorVisibleInConnector(DoorVarcoScript door, VerticalConnector connectorForDoor)
-        {
-            string corridorBeyond = door.GetRoomNameBeyondDoor(transform.position);
-            if (!expData.TryRegisterRoomDoor(door))
-            {
-                if (!string.IsNullOrEmpty(corridorBeyond) && ExplorationUtils.FindCorridorData(corridorBeyond) != null)
-                {
-                    AddEdgeToUnexploredCorridor(door, corridorBeyond);
-                }
-                else
-                {
-                    expManager.AddEdgeToUnknownCorridor(door, connectorForDoor);
-                }
-            }
-        }
-
         public (string connNodeId, Vector3 connPosCurrentFloor, Vector3 connPosDestFloor)
             AddRoomNodesToConnectedFloors(VerticalConnector activeConnector, bool isReverse, int targetFloor)
         {
@@ -191,7 +176,11 @@ namespace script.avatar.ExplorationHelpers
             string sourceId = expData.currentNodeId;
             if (!string.IsNullOrEmpty(sourceId))
             {
-                AddNewEdgeAndMarkExplored(sourceId, connectorId, connectorId, connPosHere, true);
+                AddNewEdgeAndMarkExplored(sourceId, 
+                    connectorId,
+                    connectorId,
+                    connPosHere,
+                    true);
             }
 
             fromGraph.EnterNode(connectorId);
@@ -205,7 +194,10 @@ namespace script.avatar.ExplorationHelpers
                 : corridorData.Pole1Position;
             expData.poleBPos = targetB;
 
-            graph.AddCorridorPoles(expData.pendingCorridorId, expData.poleAPos, expData.poleBPos,
+            graph.AddCorridorPoles(
+                expData.pendingCorridorId, 
+                expData.poleAPos, 
+                expData.poleBPos,
                 Vector3.Distance(expData.poleAPos, expData.poleBPos));
         }
 
@@ -256,7 +248,9 @@ namespace script.avatar.ExplorationHelpers
             float dB = Vector3.Distance(door.transform.position, expData.poleBPos);
             string otherSide = (frontName == corridorId) ? backName : frontName;
             string side =
-                ExplorationUtils.ComputeSideRelativeToCorridorAxis(door.transform.position, expData.poleAPos,
+                ExplorationUtils.ComputeSideRelativeToCorridorAxis(
+                    door.transform.position, 
+                    expData.poleAPos,
                     expData.poleBPos);
 
             if (door.isCorridorLink)
@@ -307,7 +301,7 @@ namespace script.avatar.ExplorationHelpers
             return false;
         }
 
-        private void AddEdgeToUnexploredCorridor(DoorVarcoScript door, string corridorBeyond)
+        public void AddEdgeToUnexploredCorridor(DoorVarcoScript door, string corridorBeyond)
         {
             NavMeshPath path = new NavMeshPath();
             float corridorNavDist = 0f;
@@ -330,7 +324,7 @@ namespace script.avatar.ExplorationHelpers
                 {
                     // cerca la porta fisica tra connettore e stanza
                     string dName = expData.FindDoorBetweenNodes(connNodeId, rid);
-                    GameObject roomObj = expManager.FindConnectorRoomWithGuards(dName, connNodeId, rid, fd2);
+                    GameObject roomObj = FindRoomIfAttachedToConnectorThroughEdge(dName, connNodeId, rid, fd2);
                     if (roomObj == null) return;
                     Vector3 rCenter = ExplorationUtils.GetRoomCenter(roomObj);
                     float d = Vector3.Distance(graph.GetNode(connNodeId).position, rCenter);
@@ -507,6 +501,27 @@ namespace script.avatar.ExplorationHelpers
                 toNodeId: null);
         }
         
+        public void RegisterConnectorDoor(DoorVarcoScript doorScript, GraphEdge edge, string newNodeId)
+        {
+            var connector = expData.FindConnectorForDoor(doorScript.gameObject.name);
+            if (connector != null) newNodeId = connector.id;
+
+            if (newNodeId == expData.currentNodeId)
+            {
+                string beyond = doorScript.GetRoomNameBeyondDoor(transform.position);
+                if (!string.IsNullOrEmpty(beyond) && beyond != expData.currentNodeId)
+                    newNodeId = beyond;
+            }
+
+            CreateNodeIfNotExists(newNodeId, edge);
+            MarkGraphEdgeExplored(edge, newNodeId);
+            SyncTwinCorridorEdge(edge.id, newNodeId);
+
+            expData.currentEdge = null;
+            expManager.DecideNextAction();
+        }
+
+        
         public (string targetNode, GraphNode targetData) BacktrackingLoop()
         {
             string    targetNode;
@@ -606,7 +621,7 @@ namespace script.avatar.ExplorationHelpers
             return nextEdge;
         }
 
-        public void CreateNodeIfNotExists(string newNodeId, GraphEdge edge)
+        private void CreateNodeIfNotExists(string newNodeId, GraphEdge edge)
         {
             if (graph.GetNode(newNodeId) == null)
                 graph.AddRoomNode(newNodeId, edge.position);
@@ -626,6 +641,23 @@ namespace script.avatar.ExplorationHelpers
         public CorridorPoleNode GetCorridorPoleNode(string corridorId) => graph.GetCorridorPoleNode(corridorId);
 
         public GraphNode GetNode(string nodeId) => graph.GetNode(nodeId);
+        
+        [CanBeNull]
+        private GameObject FindRoomIfAttachedToConnectorThroughEdge(string dName, 
+            string connNodeId, 
+            string rid, 
+            FloorNode fd2)
+        {
+            // Checks both for door and edge existence
+            if (string.IsNullOrEmpty(dName)) return null;
+            bool isConnTrigger = expData.FindConnectorForDoor(dName) != null;
+            if (isConnTrigger) return null;
+            var existingEdge = GetNode(connNodeId)?.edges
+                .Find(e => e?.toNodeId == rid || e?.id == dName);
+            if (existingEdge != null) return null;
+            var roomObj = ExplorationUtils.FindRoom(rid, fd2);
+            return roomObj;
+        }
 
         public string FindNearestNodeWithDiscoveredEdges(Vector3 transformPosition) => 
             graph.FindNearestNodeWithDiscoveredEdges(transformPosition);
