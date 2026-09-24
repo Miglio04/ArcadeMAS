@@ -114,7 +114,19 @@ namespace script.avatar.ExplorationHelpers
                 d += Vector3.Distance(path.corners[i - 1], path.corners[i]);
             return d;
         }
-        
+
+        public static bool IsDoorConnectedToRoom(
+            DoorVarcoScript door,
+            string roomId,
+            out string frontRoom, 
+            out string backRoom)
+        {
+            frontRoom = door.roomFront?.name ?? "";
+            backRoom  = door.roomBack?.name  ?? "";
+            if (frontRoom != roomId && backRoom != roomId) return false;
+            return true;
+        }
+
         // NAMING UTILS
         
         public static string NormalizeRoomId(string nodeId)
@@ -135,7 +147,5 @@ namespace script.avatar.ExplorationHelpers
                     pole.ResetTrigger();
             }
         }
-        
-        
     }
 }

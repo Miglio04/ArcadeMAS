@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using JetBrains.Annotations;
 using script.avatar.ExplorationHelpers;
 using UnityEngine;
@@ -50,12 +51,6 @@ namespace script.avatar
     {
         private bool explorationStarted = false;
         
-        private Dictionary<string, HashSet<string>> _roomArtifacts
-            = new Dictionary<string, HashSet<string>>();
-
-        private Dictionary<string, RoomObjectSnapshot> _artifactData
-            = new Dictionary<string, RoomObjectSnapshot>();
-    
         private ExplorationData expData;
 
         private StateMachine stateMachine;
@@ -73,21 +68,70 @@ namespace script.avatar
             stateMachine = GetComponent<StateMachine>();
             graphConstruction = GetComponent<GraphConstruction>();
             expNav = GetComponent<ExplorationNavigation>();
-        
+
+            // GraphConstruction
+            GraphConstruction.OnCorridorDoorsScanNeeded += ScanCorridorDoorsFromScript;
+            GraphConstruction.OnRotationRequested += StartRotation360;
+            GraphConstruction.OnBacktrackNodeNull += CheckFloorCompletion;
+            GraphConstruction.OnCurrentNodeNull += DoBacktrack;
+            
+            // ExplorationNavigation
+            ExplorationNavigation.OnStairsTraversed += ExecuteFloorChange;
+            
+            // StateMachine
+            StateMachine.OnCurrentNodeNullAfterBacktracking += CheckFloorCompletion;
+            StateMachine.OnNavigationEnded += ProcessPoleTouched;
+            StateMachine.OnPoleTouchedWhileTransiting += PoleTouchedWhileTransiting;
+            StateMachine.OnPoleTouchedWhileIdle += PoleTouchedWhileIdle;
+            StateMachine.OnNextActionNeeded += DecideNextAction;
+            StateMachine.OnRotationRequested += StartRotation360;
+            StateMachine.OnRotationCompleted += EndRotating360;
+            StateMachine.OnDoorTraversable += EnterThroughEdge;
+            
+            // CorridorPoleScript
             CorridorPoleScript.OnPoleTouched            += stateMachine.HandlePoleTouched;
+            
+            // ExplorationVisionCone
             ExplorationVisionCone.OnDoorDiscovered      += HandleDoorDiscovered;
             ExplorationVisionCone.OnCorridorPoleVisible += stateMachine.HandleCorridorPoleVisible;
             ExplorationVisionCone.OnDoorVisibleInRoom   += HandleDoorVisibleInRoom;
+            
+            //VerticalConnectorScript
             VerticalConnectorScript.OnConnectorReached  += HandleConnectorReached;
         
         }
 
         void OnDestroy()
         {
+            // GraphConstruction
+            GraphConstruction.OnCorridorDoorsScanNeeded -= ScanCorridorDoorsFromScript;
+            GraphConstruction.OnRotationRequested -= StartRotation360;
+            GraphConstruction.OnBacktrackNodeNull -= CheckFloorCompletion;
+            GraphConstruction.OnCurrentNodeNull -= DoBacktrack;
+            
+            // ExplorationNavigation
+            ExplorationNavigation.OnStairsTraversed -= ExecuteFloorChange;
+            
+            // StateMachine
+            StateMachine.OnCurrentNodeNullAfterBacktracking -= CheckFloorCompletion;
+            StateMachine.OnNavigationEnded -= ProcessPoleTouched;
+            StateMachine.OnPoleTouchedWhileTransiting -= PoleTouchedWhileTransiting;
+            StateMachine.OnPoleTouchedWhileIdle -= PoleTouchedWhileIdle;
+            StateMachine.OnNextActionNeeded -= DecideNextAction;
+            StateMachine.OnRotationRequested -= StartRotation360;
+            StateMachine.OnRotationCompleted -= EndRotating360;
+            StateMachine.OnDoorTraversable -= EnterThroughEdge;
+            
+                        
+            // CorridorPoleScript
             CorridorPoleScript.OnPoleTouched            -= stateMachine.HandlePoleTouched;
+            
+            // ExplorationVisionCone
             ExplorationVisionCone.OnDoorDiscovered      -= HandleDoorDiscovered;
             ExplorationVisionCone.OnCorridorPoleVisible -= stateMachine.HandleCorridorPoleVisible;
             ExplorationVisionCone.OnDoorVisibleInRoom   -= HandleDoorVisibleInRoom;
+            
+            //VerticalConnectorScript
             VerticalConnectorScript.OnConnectorReached  -= HandleConnectorReached;
         
         }
@@ -99,35 +143,33 @@ namespace script.avatar
         {
             if (expData.buildingGraph == null)
             {
-                Debug.LogWarning("[ExplMgr] BuildingGraph non assegnato!");
+                Debug.LogWarning("[ExplMgr] BuildingGraph is null!");
                 return;
             }
     
-            // ── Controlla se esiste già uno snapshot su disco ────────
+            // Check if snapshot already exists 
             if (GraphPersistence.Exists(expData.buildingId))
             {
                 BuildingSnapshot snapshot = GraphPersistence.Load(expData.buildingId);
     
                 if (snapshot != null)
                 {
-                    Debug.Log($"[ExplMgr] Snapshot trovato per '{expData.buildingId}': " +
-                              $"trasmissione diretta a JaCaMo, esplorazione saltata.");
+                    Debug.Log($"[ExplMgr] Snapshot found for '{expData.buildingId}': " +
+                              $"exploration skipped, transmitting to JaCaMo.");
     
                     var bt = GetComponent<BeliefTransmitter>();
                     bt?.TransmitSnapshot(snapshot);
-    
-                    // Metti la macchina a stati in Completed:
-                    // l'agente resta fermo, JaCaMo ha già tutto.
+                    
                     stateMachine.SetState(State.Completed);
                     return;
                 }
 
-                // File corrotto o illeggibile: procedi con esplorazione normale
+                // Start exploration in case of corrupted or unreadable file
                 Debug.LogWarning($"[ExplMgr] Snapshot corrotto per '{expData.buildingId}': riesplorazione.");
             }
     
         
-            // ── Nessuno snapshot: avvio esplorazione normale ─────────
+            // No snapshot: start exploration
             FloorNode floorData = expNav.PrepareExploration();
             if (floorData == null) return;
     
@@ -142,7 +184,7 @@ namespace script.avatar
         }
         
         // ──────────────────────────────────────────────────────────────
-        // METODO 1: StartExploration  (sostituisce l'intero metodo)
+        // METHOD 1: StartExploration
         // ──────────────────────────────────────────────────────────────
         private void StartExploration(string startNodeId, Vector3 startPos)
         {
@@ -151,8 +193,7 @@ namespace script.avatar
      
 
             Debug.Log($"[ExplMgr] Piano di partenza: {expData.currentFloor}");
-     
-            // Crea il grafo per il piano iniziale
+            
             expData.floorGraphs[expData.currentFloor] = new TopologicalGraph();
      
             expData.explorationVisionCone?.SetExplorationMode(true);
@@ -160,12 +201,10 @@ namespace script.avatar
             CorridorPoleScript.OnPoleTouched -= stateMachine.HandlePoleTouched;
             CorridorPoleScript.OnPoleTouched += stateMachine.HandlePoleTouched;
 
-            // WARN: questo metodo può essere estratto?
             var spawnCorridor = ExplorationUtils.FindCorridorData(startNodeId);
             if (spawnCorridor != null)
             {
-                // Spawn in un corridoio: non creare un room node,
-                // vai direttamente al polo più vicino
+                // If the spawn is inside a corridor move to the nearest pole.
                 expNav.BeginMovingToPole(startPos, startNodeId, spawnCorridor);
                 stateMachine.SetState(State.MovingToPole);
             }
@@ -178,17 +217,8 @@ namespace script.avatar
             Debug.Log($"[ExplMgr] Avviato da '{startNodeId}' piano {expData.currentFloor}");
         }
 
-    
-    
-        // --------------------------------------------------------
-        // REFACTOR HANDLERS POLE TOUCHED
-        // --------------------------------------------------------
-    
-        public void PoleTouchedWhileTransiting(string corridorId, string poleId, Vector3 polePos)
+        private void PoleTouchedWhileTransiting(string corridorId, string poleId, Vector3 polePos)
         {
-            // Ignora segnali di polo se siamo ancora vicini al polo A:
-            // significa che è un polo diverso da B che ha fatto scattare il trigger
-            // prima che l'agente si sia davvero avvicinato a B.
             float distToB = Vector3.Distance(transform.position, expData.poleBPos);
             float distToA = Vector3.Distance(transform.position, expData.poleAPos);
             if (distToA < distToB && distToB > expData.poleArrivalThreshold)
@@ -198,36 +228,40 @@ namespace script.avatar
             expData.SetPendingCorridorAndPole(corridorId, poleId, polePos);
             ProcessPoleTouched();
         }
-    
-        
-        public void PoleTouchedWhileIdle(string corridorId, string poleId, Vector3 polePos)
+
+
+        private void PoleTouchedWhileIdle(string corridorId, string poleId, Vector3 polePos)
         {
             if (string.IsNullOrEmpty(expData.idleTargetCorridorId)) return;
-            // Se stiamo navigando verso un corridoio specifico (idleTargetCorridorId),
-            // ignora segnali di polo di altri corridoi per non interrompere il tragitto.
+            // If the target of the movement is a defined corridor, don't stop when touching another pole
             if (corridorId != expData.idleTargetCorridorId)
             {
                 ExplorationUtils.ResetCorridorPoles(corridorId);
                 return;
             }
-
-            // Salta il check "già transitato" se ci stiamo andando intenzionalmente:
-            // il corridoio può avere ancora porte da esplorare anche se il transito
-            // centrale è già marcato come esplorato.
+            
             var poleANode = graphConstruction.GetCorridorPoleNode($"{corridorId}_A");
+            // Even if the corridor has been explored, some doors might not be.
             if (poleANode != null && !graphConstruction.HandleAlreadyExploredPole(poleANode, corridorId, poleId)) return;
-            // Corridoio corretto raggiunto: pulisci il target idle
+            // Clean target if the intended corridor gets reached
             expData.idleTargetCorridorId = null;
             expData.SetPendingCorridorAndPole(corridorId, poleId, polePos);
             ProcessPoleTouched();
         }
 
-        public void ProcessPoleTouched()
+        private void ProcessPoleTouched()
         {
             var corridorData = ExplorationUtils.FindCorridorData(expData.pendingCorridorId);
             if (corridorData == null) return;
         
-            stateMachine.ProcessPoleTouched(corridorData);
+            if (!stateMachine.IsState(State.Transiting))
+            {
+                TouchedFirstPole(corridorData);
+            }
+            else
+            {
+                graphConstruction.TouchedSecondPole();
+            }
 
             expData.pendingCorridorId = null;
             expData.pendingPoleId     = null;
@@ -264,30 +298,6 @@ namespace script.avatar
             Debug.Log($"[ExplMgr] Porta censita: {door.gameObject.name} " +
                       $"corridorLink={isCorrLink}");
         }
-    
-        //
-        // REFACTOR HANDLERS VISION CONE
-        //
-
-        private string FindNearestRoomToDoor(DoorVarcoScript door, VerticalConnector connectorForDoor)
-        {
-            var fd = expData.buildingGraph?.GetFloor(expData.currentFloor);
-            if (fd == null) return null;
-        
-            float minDist = float.MaxValue;
-            string nearest = null;
-            foreach (string roomId in fd.roomIds)
-            {
-                if (roomId == expData.currentNodeId || roomId == connectorForDoor.id) continue;
-                if (!graphConstruction.IsNodeNull(roomId, out _)) continue; // già visitata
-                var rObj = ExplorationUtils.FindRoom(roomId, fd);
-                if (rObj == null) continue;
-                float d = Vector3.Distance(door.transform.position, rObj.transform.position);
-                if (d < minDist) { minDist = d; nearest = roomId; }
-            }
-
-            return nearest;
-        }
 
         private void HandleDoorVisibleInConnectorAlreadyTransited(DoorVarcoScript door, VerticalConnector connectorForDoor)
         {
@@ -314,8 +324,8 @@ namespace script.avatar
 
             graphConstruction.AddRoomNodeAndMarkEdgeExplored(targetId, door);
         }
-        
-        public void HandleDoorVisibleInConnector(DoorVarcoScript door, VerticalConnector connectorForDoor)
+
+        private void HandleDoorVisibleInConnector(DoorVarcoScript door, VerticalConnector connectorForDoor)
         {
             string corridorBeyond = door.GetRoomNameBeyondDoor(transform.position);
             if (!expData.TryRegisterRoomDoor(door))
@@ -330,16 +340,6 @@ namespace script.avatar
                 }
             }
         }
-
-
-        private void AddEdgeToUnknownCorridor(DoorVarcoScript door, VerticalConnector connectorForDoor)
-        {
-            // Apri fisicamente la porta
-            ExplorationNavigation.OpenDoor(door);
-        
-            graphConstruction.AddConnectorNodeAndEdgeAndMarkExplored(connectorForDoor, door);
-        }
-
         private void HandleCorridorDoor(DoorVarcoScript door)
         {
             string corridorId = expData.currentNodeId.Replace("_B", "");
@@ -477,10 +477,34 @@ namespace script.avatar
             if(stateMachine.IsState(State.TraversingStairs))
                 StartCoroutine(expNav.TraverseStairsThen(targetFloor));
         }
-    
-        //
-        // REFACTOR POLE TOUCHED
-        //
+        
+        private void AddEdgeToUnknownCorridor(DoorVarcoScript door, VerticalConnector connectorForDoor)
+        {
+            // Apri fisicamente la porta
+            ExplorationNavigation.OpenDoor(door);
+        
+            graphConstruction.AddConnectorNodeAndEdgeAndMarkExplored(connectorForDoor, door);
+        }
+        
+        private string FindNearestRoomToDoor(DoorVarcoScript door, VerticalConnector connectorForDoor)
+        {
+            var fd = expData.buildingGraph?.GetFloor(expData.currentFloor);
+            if (fd == null) return null;
+        
+            float minDist = float.MaxValue;
+            string nearest = null;
+            foreach (string roomId in fd.roomIds)
+            {
+                if (roomId == expData.currentNodeId || roomId == connectorForDoor.id) continue;
+                if (!graphConstruction.IsNodeNull(roomId, out _)) continue; // già visitata
+                var rObj = ExplorationUtils.FindRoom(roomId, fd);
+                if (rObj == null) continue;
+                float d = Vector3.Distance(door.transform.position, rObj.transform.position);
+                if (d < minDist) { minDist = d; nearest = roomId; }
+            }
+
+            return nearest;
+        }
 
         [CanBeNull]
         private string GetOtherCorridorIdIfDoorMatchesCorridorCriteria(DoorVarcoScript door)
@@ -504,7 +528,7 @@ namespace script.avatar
             return otherCorrId;
         }
 
-        public void TouchedFirstPole(CorridorData corridorData)
+        private void TouchedFirstPole(CorridorData corridorData)
         {
             graphConstruction.AddCorridorPolesToGraph(corridorData);
 
@@ -556,21 +580,18 @@ namespace script.avatar
         }
 
 
-        public void StartRotation360(bool isRoom)
+        private void StartRotation360(bool isRoom)
         {
             expNav.StartRotation(isRoom);
             stateMachine.SetState(State.Rotating360);
 
             if (isRoom)
                 expData.registeredRoomDoors.Clear();
-
-            // Marca il nodo come fisicamente visitato (360° reale).
-            // Questo distingue i nodi aggiunti programmaticamente (es. ExecuteFloorChange)
-            // dai nodi realmente esplorati, impedendo che LOOP EVITATO li salti.
+            
             graphConstruction.SetRoomNodeAsPhysicallyVisited(isRoom);
         }
 
-        public void DoBacktrack()
+        private void DoBacktrack()
         {
             (string targetNode, GraphNode targetData) = graphConstruction.BacktrackingLoop();
         
@@ -580,8 +601,8 @@ namespace script.avatar
         // ====================================================
         // DECISIONE PROSSIMA AZIONE
         // ====================================================
-    
-        public void DecideNextAction()
+
+        private void DecideNextAction()
         {
             if (string.IsNullOrEmpty(expData.currentNodeId)) return;
 
@@ -621,7 +642,7 @@ namespace script.avatar
         }
 
 
-        public bool HasEdgeAlreadyBeenExplored(string newNodeId, bool isTargetCorridor, GraphEdge edge)
+        private bool HasEdgeAlreadyBeenExplored(string newNodeId, bool isTargetCorridor, GraphEdge edge)
         {
             if (graphConstruction.IsNodePhysicallyVisited(newNodeId, out var existingNode)
                 && !existingNode.HasUndiscoveredEdges() 
@@ -668,7 +689,7 @@ namespace script.avatar
         // ====================================================
         // COMPLETAMENTO PIANO
         // ====================================================
-        public void CheckFloorCompletion()
+        private void CheckFloorCompletion()
         {
             if (expData.buildingGraph == null) { OnAllFloorsCompleted(); return; }
         
@@ -864,6 +885,7 @@ namespace script.avatar
             if (doorScript != null && expData.IsConnectorDoor(doorScript.gameObject.name))
             {
                 graphConstruction.RegisterConnectorDoor(doorScript, edge, newNodeId);
+                DecideNextAction();
                 return;
             }
         
@@ -879,7 +901,7 @@ namespace script.avatar
             expData.currentEdge = null;
         }
 
-        public void ExecuteFloorChange(int targetFloor)
+        private void ExecuteFloorChange(int targetFloor)
         {
             if (stateMachine.IsState(State.Completed)) return;
 
@@ -953,19 +975,17 @@ namespace script.avatar
 
             // ── 2. Costruisci snapshot ───────────────────────────────
             BuildingSnapshot snapshot = GraphSnapshotBuilder.Build(
-                expData.floorGraphs, expData.ConnectorLinks, roomPairs, _roomArtifacts, expData.buildingId);
+                expData.floorGraphs, expData.ConnectorLinks, roomPairs, expData._roomArtifacts, expData.buildingId);
 
-            snapshot.discoveredObjects.AddRange(_artifactData.Values);
+            snapshot.discoveredObjects.AddRange(expData._artifactData.Values);
             // ── 3. Salva su disco ────────────────────────────────────
             bool saved = GraphPersistence.Save(snapshot);
             if (!saved)
                 Debug.LogWarning("[ExplMgr] Salvataggio snapshot fallito: " +
                                  "la trasmissione a JaCaMo procede comunque.");
-
         
             // ── 4. Salva JSON artefatti separato ─────────────────────
-            ArtifactsPersistence.Save(expData.buildingId, _roomArtifacts, _artifactData);
-
+            ArtifactsPersistence.Save(expData.buildingId, expData._roomArtifacts, expData._artifactData);
 
             // ── 6. Trasmetti a JaCaMo ────────────────────────────────
             var bt = GetComponent<BeliefTransmitter>();
@@ -983,14 +1003,16 @@ namespace script.avatar
         // HELPER
         // ====================================================
 
-        public void ScanCorridorDoorsFromScript(string corridorId)
+        private void ScanCorridorDoorsFromScript(string corridorId)
         {
             foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
             {
-                string frontName = door.roomFront?.name ?? "";
-                string backName  = door.roomBack?.name  ?? "";
-
-                if (frontName != corridorId && backName != corridorId) continue;
+                if (!ExplorationUtils.IsDoorConnectedToRoom(
+                        door, 
+                        corridorId, 
+                        out var frontName, 
+                        out var backName))
+                    continue;
 
                 if (expData.IsCorridorDoorAlreadyRegistered(door)) { continue; }
             
@@ -1009,9 +1031,12 @@ namespace script.avatar
                     || door.roomBack == null 
                     || expData.IsConnectorDoor(door.gameObject.name)) continue;
 
-                string frontName = door.roomFront.name;
-                string backName  = door.roomBack.name;
-                if (frontName != roomId && backName != roomId) continue;
+                if(!ExplorationUtils.IsDoorConnectedToRoom(
+                       door, 
+                       roomId, 
+                       out var frontName, 
+                       out var backName)) 
+                    continue;
 
                 // Con il nuovo Dictionary: controlla se già registrata da QUESTA stanza
                 if (expData.IsRoomDoorAlreadyRegistered(roomId, door)) continue;
@@ -1022,31 +1047,7 @@ namespace script.avatar
             }
         }
 
-        public void RegisterDiscoveredObject(string artifactId, string roomId,
-            string artifactType, int wsPort, float x, float y, float z)
-        {
-            // Aggiorna dato completo
-            _artifactData[artifactId] = new RoomObjectSnapshot
-            {
-                artifactId   = artifactId,
-                artifactType = artifactType,
-                roomId       = roomId,
-                wsPort       = wsPort,
-                x = x, y = y, z = z,
-            };
-
-            // Rimuovi da stanza precedente se cambiata
-            foreach (var kv in _roomArtifacts)
-                if (kv.Key != roomId)
-                    kv.Value.Remove(artifactId);
-
-            // Aggiungi alla stanza corrente
-            if (!_roomArtifacts.ContainsKey(roomId))
-                _roomArtifacts[roomId] = new HashSet<string>();
-            _roomArtifacts[roomId].Add(artifactId);
-        }
-
-        public void EndRotating360()
+        private void EndRotating360()
         {
             expData.rotationAccum = 0f;
             Debug.Log($"[ExplMgr] 360° completato in '{expData.currentNodeId}'.");

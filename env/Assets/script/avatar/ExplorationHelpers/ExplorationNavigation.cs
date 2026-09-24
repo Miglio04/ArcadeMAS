@@ -11,8 +11,6 @@ namespace script.avatar.ExplorationHelpers
         private ExplorationData expData;
         private NavMeshAgent navAgent;
         
-        private ExplorationManager expManager;
-
         public Vector3 AgentPosition => navAgent.transform.position;
         public bool PathPending => navAgent.pathPending;
         public bool ArrivedAtPole => navAgent.remainingDistance<expData.poleArrivalThreshold;
@@ -28,9 +26,10 @@ namespace script.avatar.ExplorationHelpers
         private void Awake()
         {
             expData = GetComponent<ExplorationData>();
-            expManager = GetComponent<ExplorationManager>();
             navAgent = GetComponent<NavMeshAgent>();
         }
+        
+        public static event System.Action<int> OnStairsTraversed;
 
         public FloorNode PrepareExploration()
         {
@@ -272,8 +271,8 @@ namespace script.avatar.ExplorationHelpers
                 yield return new WaitForSeconds(0.6f);
             }
         }
-
-        expManager.ExecuteFloorChange(targetFloor);
+        
+        OnStairsTraversed?.Invoke(targetFloor);
     }
     
     

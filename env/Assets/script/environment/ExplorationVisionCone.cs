@@ -357,7 +357,7 @@ private void ScanForRoomObjects()
         {
             Debug.Log($"[EVC] '{id}' VISTO in '{roomId}'");
 
-            explorationManager?.RegisterDiscoveredObject(
+            explorationData?.RegisterDiscoveredObject(
                 id, roomId, artifact.ArtifactType.ToString(),
                 int.Parse(artifact.port),
                 artifact.transform.position.x,
@@ -377,7 +377,7 @@ private void ScanForRoomObjects()
         }
         else if (_lastSeenRoom.TryGetValue(id, out var lastRoom) && lastRoom != roomId)
         {
-            explorationManager?.RegisterDiscoveredObject(
+            explorationData?.RegisterDiscoveredObject(
                 id, roomId, artifact.ArtifactType.ToString(),
                 int.Parse(artifact.port),
                 artifact.transform.position.x,

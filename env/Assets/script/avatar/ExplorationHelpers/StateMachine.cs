@@ -23,14 +23,22 @@ namespace script.avatar.ExplorationHelpers
         private State state = State.Idle;
         
         private ExplorationData expData;
-        private ExplorationManager expManager;
         private GraphConstruction graphConstruction;
         private ExplorationNavigation expNav;
+
+        public static event Action OnCurrentNodeNullAfterBacktracking;
+        public static event Action OnNavigationEnded;
+        public static event Action<string, string, Vector3> OnPoleTouchedWhileTransiting;
+        public static event Action<string, string, Vector3> OnPoleTouchedWhileIdle;
+        public static event Action OnNextActionNeeded;
+        public static event Action OnRotationCompleted;
+        public static event Action<bool> OnRotationRequested;
+        public static event Action<GraphEdge> OnDoorTraversable;
+
 
         void Awake()
         {
             expData = GetComponent<ExplorationData>();
-            expManager = GetComponent<ExplorationManager>();
             expNav = GetComponent<ExplorationNavigation>();
             graphConstruction = GetComponent<GraphConstruction>();
         }
@@ -64,7 +72,7 @@ namespace script.avatar.ExplorationHelpers
             {
                 expData.movingToPoleCorridorId = null;
                 expData.movingToPoleTimer = 0f;
-                expManager.ProcessPoleTouched();
+                OnNavigationEnded?.Invoke();
                 return;
             }
 
@@ -73,7 +81,7 @@ namespace script.avatar.ExplorationHelpers
             {
                 expData.movingToPoleCorridorId = null;
                 expData.movingToPoleTimer = 0f;
-                expManager.ProcessPoleTouched();
+                OnNavigationEnded?.Invoke();
             }
         }
         
@@ -89,7 +97,7 @@ namespace script.avatar.ExplorationHelpers
                 expData.pendingCorridorId = expData.transitCorridorId;
                 expData.pendingPoleId     = "B_fallback";
                 expData.pendingPolePos    = expData.poleBPos;
-                expManager.ProcessPoleTouched();
+                OnNavigationEnded?.Invoke();
             }
         }
         
@@ -102,8 +110,8 @@ namespace script.avatar.ExplorationHelpers
 
             if (expData.rotationAccum >= 360f)
             {
-                expManager.EndRotating360();
-                expManager.DecideNextAction();
+                OnRotationCompleted?.Invoke();
+                OnNextActionNeeded?.Invoke();
             }
         }
 
@@ -119,13 +127,13 @@ namespace script.avatar.ExplorationHelpers
 
     private void UpdateInspectingDoor()
     {
-        if (expData.currentEdge == null) { expManager.DecideNextAction(); return; }
+        if (expData.currentEdge == null) { OnNextActionNeeded?.Invoke(); return; }
 
         if (expData.currentEdge.doorState == DoorState.Locked)
         {
             graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
             expData.currentEdge = null;
-            expManager.DecideNextAction();
+            OnNextActionNeeded?.Invoke();
             return;
         }
 
@@ -135,11 +143,10 @@ namespace script.avatar.ExplorationHelpers
             expData.currentEdge.doorState = DoorState.Locked;
             graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
             expData.currentEdge = null;
-            expManager.DecideNextAction();
+            OnNextActionNeeded?.Invoke();
             return;
         }
-
-        expManager.EnterThroughEdge(expData.currentEdge);
+        OnDoorTraversable?.Invoke(expData.currentEdge);
     }
 
     private void UpdateEnteringRoom()
@@ -150,11 +157,12 @@ namespace script.avatar.ExplorationHelpers
       if (expNav.Arrived || expData.enteringRoomTimer >= expData.enteringRoomTimeout)
         {
             expData.enteringRoomTimer = 0f;
-            expManager.StartRotation360(isRoom: true);
+            // Parameter is true if we are inside a room.
+            OnRotationRequested?.Invoke(true);
         }
     }
 
-    private void UpdateInsideRoom() => expManager.StartRotation360(isRoom: true);
+    private static void UpdateInsideRoom() => OnRotationRequested?.Invoke(true);
 
     private void UpdateBacktracking()
     {
@@ -170,11 +178,11 @@ namespace script.avatar.ExplorationHelpers
             backtrackTimer = 0f;
             
             expData.currentNodeId = graphConstruction.GetCurrentNodeId();
-            if (string.IsNullOrEmpty(expData.currentNodeId)) { expManager.CheckFloorCompletion(); return; }
+            if (string.IsNullOrEmpty(expData.currentNodeId)) { OnCurrentNodeNullAfterBacktracking?.Invoke(); return; }
 
             Debug.Log($"[ExplMgr] Backtrack completato in {expData.currentNodeId}. Prossima azione!");
             state = State.Idle;
-            expManager.DecideNextAction();
+            OnNextActionNeeded?.Invoke();
         }
     }
 
@@ -225,20 +233,20 @@ namespace script.avatar.ExplorationHelpers
 
         if (state == State.Transiting && corridorId == expData.transitCorridorId)
         {
-            expManager.PoleTouchedWhileTransiting(corridorId, poleId, polePos);
+            OnPoleTouchedWhileTransiting?.Invoke(corridorId, poleId, polePos);
             return;
         }
 
         if (state == State.MovingToPole && corridorId == expData.pendingCorridorId)
         {
             expData.pendingPolePos = polePos;
-            expManager.ProcessPoleTouched();
+            OnNavigationEnded?.Invoke();
             return;
         }
 
         if (state == State.Idle)
         {
-            expManager.PoleTouchedWhileIdle(corridorId, poleId, polePos);
+            OnPoleTouchedWhileIdle?.Invoke(corridorId, poleId, polePos);
             return;
         }
 
@@ -273,7 +281,7 @@ namespace script.avatar.ExplorationHelpers
             expData.currentNodeId  = targetNode;
             Debug.Log($"[ExplMgr] Backtrack diretto a '{targetNode}' — salto viaggio fisico.");
             state = State.Idle;
-            expManager.DecideNextAction();
+            OnNextActionNeeded?.Invoke();
             return;
         }
 
@@ -299,17 +307,5 @@ namespace script.avatar.ExplorationHelpers
         return true;
     }
 
-    public void ProcessPoleTouched(CorridorData corridorData)
-    {
-
-        if (!IsState(State.Transiting))
-        {
-            expManager.TouchedFirstPole(corridorData);
-        }
-        else
-        {
-            graphConstruction.TouchedSecondPole();
-        }
-    }
     }
 }

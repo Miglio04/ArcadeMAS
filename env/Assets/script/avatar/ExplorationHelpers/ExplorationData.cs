@@ -89,6 +89,12 @@ namespace script.avatar.ExplorationHelpers
         [NonSerialized] public HashSet<string> registeredTransitDoors = new HashSet<string>();
         [NonSerialized] public HashSet<string> allCorridorDoors = new HashSet<string>();
         [NonSerialized] public HashSet<string> traversedConnectors = new HashSet<string>();
+        
+        [NonSerialized] public Dictionary<string, HashSet<string>> _roomArtifacts
+            = new Dictionary<string, HashSet<string>>();
+
+        [NonSerialized] public Dictionary<string, RoomObjectSnapshot> _artifactData
+            = new Dictionary<string, RoomObjectSnapshot>();
 
         public void SetPendingCorridorAndPole(string corridorId, string poleId, Vector3 polePos)
         {
@@ -267,6 +273,30 @@ namespace script.avatar.ExplorationHelpers
         public bool IsRoomDoorAlreadyRegistered(string roomId, DoorVarcoScript door) =>
             registeredRoomDoors.TryGetValue(door.gameObject.name, out string from)
             && from == roomId;
+        
+        public void RegisterDiscoveredObject(string artifactId, string roomId,
+            string artifactType, int wsPort, float x, float y, float z)
+        {
+            // Aggiorna dato completo
+            _artifactData[artifactId] = new RoomObjectSnapshot
+            {
+                artifactId   = artifactId,
+                artifactType = artifactType,
+                roomId       = roomId,
+                wsPort       = wsPort,
+                x = x, y = y, z = z,
+            };
+
+            // Rimuovi da stanza precedente se cambiata
+            foreach (var kv in _roomArtifacts)
+                if (kv.Key != roomId)
+                    kv.Value.Remove(artifactId);
+
+            // Aggiungi alla stanza corrente
+            if (!_roomArtifacts.ContainsKey(roomId))
+                _roomArtifacts[roomId] = new HashSet<string>();
+            _roomArtifacts[roomId].Add(artifactId);
+        }
 
     }
 }

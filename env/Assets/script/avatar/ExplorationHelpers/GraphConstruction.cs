@@ -16,12 +16,18 @@ namespace script.avatar.ExplorationHelpers
         
         private ExplorationData expData;
 
-        private ExplorationManager expManager;
+
+        public static event System.Action<string> OnCorridorDoorsScanNeeded;
+
+        public static event System.Action<bool> OnRotationRequested;
+
+        public static event System.Action OnBacktrackNodeNull;
+
+        public static event System.Action OnCurrentNodeNull;
 
         void Awake()
         {
             expData = GetComponent<ExplorationData>();
-            expManager = GetComponent<ExplorationManager>();
         }
         
         private static (string connId2, Vector3 connectorPos) AddConnectorRoomToGraph(
@@ -455,7 +461,7 @@ namespace script.avatar.ExplorationHelpers
             expData.currentNodeId = poleBId;
             graph.EnterNode(poleBId);
 
-            expManager.ScanCorridorDoorsFromScript(expData.pendingCorridorId);
+            OnCorridorDoorsScanNeeded?.Invoke(expData.pendingCorridorId);
 
             ComputeCorridorOrders(expData.pendingCorridorId);
 
@@ -464,7 +470,7 @@ namespace script.avatar.ExplorationHelpers
 
             expData.movingToPoleCorridorId = null;
             Debug.Log($"[ExplMgr] Polo B toccato. Inizio ispezione {expData.pendingCorridorId}.");
-            expManager.StartRotation360(isRoom: false);
+            OnRotationRequested?.Invoke(false);
         }
 
         public void UpdateEdgeId(string roomId)
@@ -518,7 +524,6 @@ namespace script.avatar.ExplorationHelpers
             SyncTwinCorridorEdge(edge.id, newNodeId);
 
             expData.currentEdge = null;
-            expManager.DecideNextAction();
         }
 
         
@@ -530,7 +535,7 @@ namespace script.avatar.ExplorationHelpers
             while (true)
             {
                 targetNode = graph.Backtrack();
-                if (targetNode == null) { expManager.CheckFloorCompletion(); break; }
+                if (targetNode == null) { OnBacktrackNodeNull?.Invoke(); break; }
 
                 targetData = graph.GetNode(targetNode);
                 if (targetData != null && targetData.HasUndiscoveredEdges())
@@ -592,7 +597,7 @@ namespace script.avatar.ExplorationHelpers
         public GraphEdge RetrieveNextEdgeToInspect()
         {
             var node = graph.GetNode(expData.currentNodeId);
-            if (node == null) { expManager.DoBacktrack(); return null; }
+            if (node == null) { OnCurrentNodeNull?.Invoke(); return null; }
 
             GraphEdge nextEdge;
 
