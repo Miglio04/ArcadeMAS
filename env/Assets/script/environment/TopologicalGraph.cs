@@ -53,7 +53,7 @@ public abstract class GraphNode
         fullyExplored = false;
     }
 
-    public bool HasUndiscoveredEdges()
+    public bool HasUnexploredEdges()
     {
         foreach (var e in edges)
             if (e != null && e.state == EdgeState.Discovered) return true;
@@ -282,7 +282,6 @@ public class TopologicalGraph
 
         var existing = node.edges.Find(e => e?.id == eid);
         if (existing != null) return existing;
-
         var edge = new GraphEdge(eid, fromNodeId, isPhysical, EdgeType.Door, doorPos)
         {
             navMeshDist = navMeshDist,
@@ -291,7 +290,7 @@ public class TopologicalGraph
         };
         node.edges.Add(edge);
 
-        Debug.Log($"[Graph] Door: {fromNodeId}→{doorId} navDist={navMeshDist:F1}");
+        Debug.Log($"[Graph] Door: {fromNodeId}→{doorId}->{toNodeId} navDist={navMeshDist:F1}");
         return edge;
     }
 
@@ -404,11 +403,20 @@ public class TopologicalGraph
     public void ComputeForwardOrders(string corridorId)
     {
         string idA = $"{corridorId}_A";
-        if (!nodes.ContainsKey(idA)) return;
+        if (!nodes.ContainsKey(idA))
+        {
+            Debug.Log($"[Graph] ComputeForwardOrders: idA={idA} not found!");
+            return;
+        }
 
         var fwEdges = nodes[idA].edges.FindAll(
     e => e != null && e.edgeType == EdgeType.DoorFW
-                   && !e.isCorridorLink);  
+                   && !e.isCorridorLink);
+
+        foreach (var fwEdge in fwEdges)
+        {
+            Debug.Log($"[Graph] ComputeForwardOrders: fwNode={fwEdge.id}");
+        }
 
         var fwRight = fwEdges.FindAll(e => e.side == "RIGHT");
         var fwLeft  = fwEdges.FindAll(e => e.side == "LEFT");
@@ -627,7 +635,7 @@ public class TopologicalGraph
         float  minDist = float.MaxValue;
         foreach (var node in nodes.Values)
         {
-            if (node == null || !node.HasUndiscoveredEdges()) continue;
+            if (node == null || !node.HasUnexploredEdges()) continue;
             float d = Vector3.Distance(agentPos, node.position);
             if (d < minDist) { minDist = d; nearest = node.id; }
         }
@@ -637,7 +645,7 @@ public class TopologicalGraph
     public bool IsFullyExplored()
     {
         foreach (var node in nodes.Values)
-            if (node != null && node.HasUndiscoveredEdges()) return false;
+            if (node != null && node.HasUnexploredEdges()) return false;
         return true;
     }
 

@@ -16,8 +16,7 @@ namespace script.avatar.ExplorationHelpers
         {
             bool aIsStart = (conn.id == nodeA || conn.triggerStartObject.name == nodeA);
             bool aIsEnd = (conn.id == nodeA || conn.triggerEndObject.name == nodeA);
-
-            //verifica anche che nodeB corrisponda al lato opposto
+            
             bool bMatchesEnd = (conn.id == nodeB || conn.triggerEndObject.name == nodeB);
             bool bMatchesStart = (conn.id == nodeB || conn.triggerStartObject.name == nodeB);
         
@@ -54,13 +53,13 @@ namespace script.avatar.ExplorationHelpers
         {
             foreach (var c in FindObjectsByType<CorridorData>(FindObjectsSortMode.None))
             {
-                // La posizione è tra i due poli (proiezione sull'asse del corridoio)
+                // Check if pos is between the two poles
                 Vector3 axis = c.Pole2Position - c.Pole1Position;
                 float len    = axis.magnitude;
                 if (len < 0.01f) continue;
                 Vector3 dir  = axis / len;
                 float proj   = Vector3.Dot(pos - c.Pole1Position, dir);
-                // Distanza laterale dall'asse
+                // Lateral distance from the axis
                 Vector3 onAxis  = c.Pole1Position + dir * Mathf.Clamp(proj, 0f, len);
                 float lateralDist = Vector3.Distance(pos, onAxis);
                 if (lateralDist <= radius && proj >= -radius && proj <= len + radius)
@@ -123,8 +122,7 @@ namespace script.avatar.ExplorationHelpers
         {
             frontRoom = door.roomFront?.name ?? "";
             backRoom  = door.roomBack?.name  ?? "";
-            if (frontRoom != roomId && backRoom != roomId) return false;
-            return true;
+            return frontRoom == roomId || backRoom == roomId;
         }
 
         // NAMING UTILS
@@ -133,7 +131,7 @@ namespace script.avatar.ExplorationHelpers
         {
             if (string.IsNullOrEmpty(nodeId)) return nodeId;
             if (nodeId.EndsWith("_A") || nodeId.EndsWith("_B"))
-                return nodeId.Substring(0, nodeId.Length - 2);   // corridoio2_B → corridoio2
+                return nodeId.Substring(0, nodeId.Length - 2);
             return nodeId;
         }
         

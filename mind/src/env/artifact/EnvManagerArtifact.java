@@ -31,16 +31,16 @@ public class EnvManagerArtifact extends AbstractMasElementArtifact {
     // Nel .jcm: artifact envManager: artifact.EnvManagerArtifact("envManager")
     // -------------------------------------------------------------------
   @OPERATION
-protected void init(String artifactName) {
-    defineObsProperty("graphReady", false);
-    System.out.println("[envManager] inizializzato.");
-    if (loadFromDisk()) {
-         cachedPathfinder = buildGraph();
-        getObsProperty("graphReady").updateValue(true);
-        signal("graphReady");   // <-- AGGIUNTO: notifica vesna anche se il grafo viene da disco
-        System.out.println("[envManager] Grafo caricato da disco (" + rawNodes.size() + " nodi).");
+    protected void init(String artifactName) {
+        defineObsProperty("graphReady", false);
+        System.out.println("[envManager] inizializzato.");
+        if (loadFromDisk()) {
+             cachedPathfinder = buildGraph();
+            getObsProperty("graphReady").updateValue(true);
+            signal("graphReady");   // <-- AGGIUNTO: notifica vesna anche se il grafo viene da disco
+            System.out.println("[envManager] Grafo caricato da disco (" + rawNodes.size() + " nodi).");
+        }
     }
-}
 
     // -------------------------------------------------------------------
     // Operazioni env manager (retrieval artefatti da Unity)
@@ -370,11 +370,13 @@ protected void init(String artifactName) {
 
             if (!nodeIds.contains(from)) {
                 throw new IllegalArgumentException(
-                        "Arco " + i + ": nodo FROM inesistente: " + from);
+                        "Arco " + i + "("+ from + ", "+ to +"): nodo FROM inesistente: " + from);
             }
             if (!nodeIds.contains(to)) {
+                for(int j=0; j<rawEdges.size(); j++)
+                    System.out.println("Edge: " + rawEdges.get(j)[0] + " to " + rawEdges.get(j)[1]);
                 throw new IllegalArgumentException(
-                        "Arco " + i + ": nodo TO inesistente: " + to);
+                        "Arco " + i + "("+ from + ", "+ to +"): nodo TO inesistente: " + to);
             }
 
             double weight;

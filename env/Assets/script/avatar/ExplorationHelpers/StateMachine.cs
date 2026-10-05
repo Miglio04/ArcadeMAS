@@ -14,20 +14,20 @@ namespace script.avatar.ExplorationHelpers
     
     public class StateMachine : MonoBehaviour
     {
-        private float backtrackTimer = 0f;
+        private float _backtrackTimer = 0f;
 
-        private float idleTimer = 0f;
+        private float _idleTimer = 0f;
         
-        private float transitTimer = 0f;
+        private float _transitTimer = 0f;
         
-        private State state = State.Idle;
+        private State _state = State.Idle;
         
-        private ExplorationData expData;
-        private GraphConstruction graphConstruction;
-        private ExplorationNavigation expNav;
+        private ExplorationData _expData;
+        private GraphConstruction _graphConstruction;
+        private ExplorationNavigation _expNav;
 
         public static event Action OnCurrentNodeNullAfterBacktracking;
-        public static event Action OnNavigationEnded;
+        public static event Action OnNavigationToCorridorEnded;
         public static event Action<string, string, Vector3> OnPoleTouchedWhileTransiting;
         public static event Action<string, string, Vector3> OnPoleTouchedWhileIdle;
         public static event Action OnNextActionNeeded;
@@ -38,18 +38,18 @@ namespace script.avatar.ExplorationHelpers
 
         void Awake()
         {
-            expData = GetComponent<ExplorationData>();
-            expNav = GetComponent<ExplorationNavigation>();
-            graphConstruction = GetComponent<GraphConstruction>();
+            _expData = GetComponent<ExplorationData>();
+            _expNav = GetComponent<ExplorationNavigation>();
+            _graphConstruction = GetComponent<GraphConstruction>();
         }
         
         // --------------------------------------------------------
-        // UPDATE
+        // EXPLORATION UPDATE
         // --------------------------------------------------------
         
         public void Tick()
         {
-            switch (state)
+            switch (_state)
             {
                 case State.MovingToPole:      UpdateMovingToPole();      break;
                 case State.Transiting:        UpdateTransiting();        break;
@@ -66,49 +66,49 @@ namespace script.avatar.ExplorationHelpers
         
         private void UpdateMovingToPole()
         {
-            expData.movingToPoleTimer += Time.deltaTime;
+            _expData.movingToPoleTimer += Time.deltaTime;
 
-            if (expData.movingToPoleTimer >= expData.poleTimeoutSeconds)
+            if (_expData.movingToPoleTimer >= _expData.poleTimeoutSeconds)
             {
-                expData.movingToPoleCorridorId = null;
-                expData.movingToPoleTimer = 0f;
-                OnNavigationEnded?.Invoke();
+                _expData.movingToPoleCorridorId = null;
+                _expData.movingToPoleTimer = 0f;
+                OnNavigationToCorridorEnded?.Invoke();
                 return;
             }
 
-            if (expNav.PathPending) return;
-            if (expNav.ArrivedAtPole)
+            if (_expNav.PathPending) return;
+            if (_expNav.ArrivedAtPole)
             {
-                expData.movingToPoleCorridorId = null;
-                expData.movingToPoleTimer = 0f;
-                OnNavigationEnded?.Invoke();
+                _expData.movingToPoleCorridorId = null;
+                _expData.movingToPoleTimer = 0f;
+                OnNavigationToCorridorEnded?.Invoke();
             }
         }
         
         private void UpdateTransiting()
         {
-            transitTimer += Time.deltaTime;
+            _transitTimer += Time.deltaTime;
 
-            if (expNav.PathPending && transitTimer < expData.poleTimeoutSeconds) return;
+            if (_expNav.PathPending && _transitTimer < _expData.poleTimeoutSeconds) return;
 
-            if (expNav.ArrivedAtPole || transitTimer >= expData.poleTimeoutSeconds)
+            if (_expNav.ArrivedAtPole || _transitTimer >= _expData.poleTimeoutSeconds)
             {
-                transitTimer = 0f;
-                expData.pendingCorridorId = expData.transitCorridorId;
-                expData.pendingPoleId     = "B_fallback";
-                expData.pendingPolePos    = expData.poleBPos;
-                OnNavigationEnded?.Invoke();
+                _transitTimer = 0f;
+                _expData.pendingCorridorId = _expData.transitCorridorId;
+                _expData.pendingPoleId     = "B_fallback";
+                _expData.pendingPolePos    = _expData.poleBPos;
+                OnNavigationToCorridorEnded?.Invoke();
             }
         }
         
         private void UpdateRotating360()
         {
-            expNav.Stop();
-            float step = expData.rotationSpeed * Time.deltaTime;
+            _expNav.Stop();
+            float step = _expData.rotationSpeed * Time.deltaTime;
             transform.Rotate(0, step, 0);
-            expData.rotationAccum += step;
+            _expData.rotationAccum += step;
 
-            if (expData.rotationAccum >= 360f)
+            if (_expData.rotationAccum >= 360f)
             {
                 OnRotationCompleted?.Invoke();
                 OnNextActionNeeded?.Invoke();
@@ -117,46 +117,46 @@ namespace script.avatar.ExplorationHelpers
 
         private void UpdateMovingToDoor()
     {
-        if (expNav.PathPending) return;
-        if (expNav.InsideInspectionDistance)
+        if (_expNav.PathPending) return;
+        if (_expNav.InsideInspectionDistance)
         {
-            expNav.Stop();
-            state = State.InspectingDoor;
+            _expNav.Stop();
+            _state = State.InspectingDoor;
         }
     }
 
     private void UpdateInspectingDoor()
     {
-        if (expData.currentEdge == null) { OnNextActionNeeded?.Invoke(); return; }
+        if (_expData.currentEdge == null) { OnNextActionNeeded?.Invoke(); return; }
 
-        if (expData.currentEdge.doorState == DoorState.Locked)
+        if (_expData.currentEdge.doorState == DoorState.Locked)
         {
-            graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
-            expData.currentEdge = null;
+            _graphConstruction.MarkGraphEdgeExplored(_expData.currentEdge, null);
+            _expData.currentEdge = null;
             OnNextActionNeeded?.Invoke();
             return;
         }
 
-        var door = ExplorationUtils.FindDoorScript(expData.currentEdge.id);
+        var door = ExplorationUtils.FindDoorScript(_expData.currentEdge.id);
         if (door != null && !door.IsTraversable && !door.TryOpen())
         {
-            expData.currentEdge.doorState = DoorState.Locked;
-            graphConstruction.MarkGraphEdgeExplored(expData.currentEdge, null);
-            expData.currentEdge = null;
+            _expData.currentEdge.doorState = DoorState.Locked;
+            _graphConstruction.MarkGraphEdgeExplored(_expData.currentEdge, null);
+            _expData.currentEdge = null;
             OnNextActionNeeded?.Invoke();
             return;
         }
-        OnDoorTraversable?.Invoke(expData.currentEdge);
+        OnDoorTraversable?.Invoke(_expData.currentEdge);
     }
 
     private void UpdateEnteringRoom()
     {
-        if (expNav.PathPending) return;
-        expData.enteringRoomTimer += Time.deltaTime;
+        if (_expNav.PathPending) return;
+        _expData.enteringRoomTimer += Time.deltaTime;
 
-      if (expNav.Arrived || expData.enteringRoomTimer >= expData.enteringRoomTimeout)
+      if (_expNav.Arrived || _expData.enteringRoomTimer >= _expData.enteringRoomTimeout)
         {
-            expData.enteringRoomTimer = 0f;
+            _expData.enteringRoomTimer = 0f;
             // Parameter is true if we are inside a room.
             OnRotationRequested?.Invoke(true);
         }
@@ -166,85 +166,83 @@ namespace script.avatar.ExplorationHelpers
 
     private void UpdateBacktracking()
     {
-        if (expNav.PathPending) return;
+        if (_expNav.PathPending) return;
 
-        backtrackTimer += Time.deltaTime;
-        bool arrived = expNav.Arrived;
-        bool pathFailed = !expNav.HasPath;
-        bool timedOut   = backtrackTimer >= expData.backtrackTimeout;
+        _backtrackTimer += Time.deltaTime;
+        bool arrived = _expNav.Arrived;
+        bool pathFailed = !_expNav.HasPath;
+        bool timedOut   = _backtrackTimer >= _expData.backtrackTimeout;
 
         if (arrived || pathFailed || timedOut)
         {
-            backtrackTimer = 0f;
+            _backtrackTimer = 0f;
             
-            expData.currentNodeId = graphConstruction.GetCurrentNodeId();
-            if (string.IsNullOrEmpty(expData.currentNodeId)) { OnCurrentNodeNullAfterBacktracking?.Invoke(); return; }
+            _expData.currentNodeId = _graphConstruction.GetCurrentNodeId();
+            if (string.IsNullOrEmpty(_expData.currentNodeId)) { OnCurrentNodeNullAfterBacktracking?.Invoke(); return; }
 
-            Debug.Log($"[ExplMgr] Backtrack completato in {expData.currentNodeId}. Prossima azione!");
-            state = State.Idle;
+            Debug.Log($"[StateMachine] Backtrack completed in {_expData.currentNodeId}. Waiting for next action.");
+            _state = State.Idle;
             OnNextActionNeeded?.Invoke();
         }
     }
 
     private void UpdateMovingToConnector()
     {
-        if (expNav.PathPending) return;
-        if (expData.pendingConnector != null && expNav.ArrivedAtConnector)
+        if (_expNav.PathPending) return;
+        if (_expData.pendingConnector != null && _expNav.ArrivedAtConnector)
         {
-            int targetFloor = (expData.pendingConnector.floorFrom == expData.currentFloor)
-                ? expData.pendingConnector.floorTo
-                : expData.pendingConnector.floorFrom;
-            state = State.TraversingStairs;
+            int targetFloor = (_expData.pendingConnector.floorFrom == _expData.currentFloor)
+                ? _expData.pendingConnector.floorTo
+                : _expData.pendingConnector.floorFrom;
+            _state = State.TraversingStairs;
             
-            StartCoroutine(expNav.TraverseStairsThen(targetFloor));
+            StartCoroutine(_expNav.TraverseStairsThen(targetFloor));
         }
     }
     
     private void UpdateIdle()
     {
-        if (string.IsNullOrEmpty(expData.idleTargetCorridorId)) return;
-        if (expNav.PathPending) return;
+        if (string.IsNullOrEmpty(_expData.idleTargetCorridorId)) return;
+        if (_expNav.PathPending) return;
 
-        idleTimer += Time.deltaTime;
+        _idleTimer += Time.deltaTime;
 
-        bool arrived  = expNav.Arrived;
-        bool timedOut = idleTimer >= 2.0f;
+        bool arrived  = _expNav.Arrived;
+        bool timedOut = _idleTimer >= 2.0f;
 
         if (!arrived && !timedOut) return;
 
-        idleTimer = 0f;
-        var corridorData = ExplorationUtils.FindCorridorData(expData.idleTargetCorridorId);
-        if (corridorData == null) { expData.idleTargetCorridorId = null; return; }
+        _idleTimer = 0f;
+        var corridorData = ExplorationUtils.FindCorridorData(_expData.idleTargetCorridorId);
+        if (corridorData == null) { _expData.idleTargetCorridorId = null; return; }
 
-        expNav.BeginMovingToPole(transform.position, expData.idleTargetCorridorId, corridorData);
+        _expNav.BeginMovingToPole(transform.position, _expData.idleTargetCorridorId, corridorData);
         SetState(State.MovingToPole);
     }
 
-    public void SetState(State otherState) => state = otherState;
+    public void SetState(State otherState) => _state = otherState;
 
     
-    public bool IsState(State otherState) => state == otherState;
-    
-    // UPDATE STATES BASED OFF SITUATIONS
+    public bool IsState(State otherState) => _state == otherState;
         
     public void HandlePoleTouched(string corridorId, string poleId, Vector3 polePos)
     {
-        Debug.Log($"[ExplMgr] Segnale fisico da {corridorId}_{poleId}. Stato: {state}");
+        Debug.Log($"[StateMachine] Physical signal sent by {corridorId}_{poleId}. State: {_state}");
 
-        if (state == State.Transiting && corridorId == expData.transitCorridorId)
+        if (_state == State.Transiting && corridorId == _expData.transitCorridorId)
         {
             OnPoleTouchedWhileTransiting?.Invoke(corridorId, poleId, polePos);
             return;
         }
 
-        if (state == State.MovingToPole && corridorId == expData.pendingCorridorId)
+        if (_state == State.MovingToPole && corridorId == _expData.pendingCorridorId)
         {
-            expData.pendingPolePos = polePos;
-            OnNavigationEnded?.Invoke();
+            _expData.pendingPolePos = polePos;
+            OnNavigationToCorridorEnded?.Invoke();
             return;
         }
 
-        if (state == State.Idle)
+        if (_state == State.Idle)
         {
             OnPoleTouchedWhileIdle?.Invoke(corridorId, poleId, polePos);
             return;
@@ -252,42 +250,25 @@ namespace script.avatar.ExplorationHelpers
 
         ExplorationUtils.ResetCorridorPoles(corridorId);
     }
-    
-    public void HandleCorridorPoleVisible(string corridorId, string poleId, Vector3 polePos)
-    {
-        if (state != State.Idle && state != State.Backtracking) return;
-        if (!string.IsNullOrEmpty(expData.idleTargetCorridorId) && corridorId != expData.idleTargetCorridorId) return;
-
-        var corridorData = ExplorationUtils.FindCorridorData(corridorId);
-        if (corridorData == null) return;
-        
-        if (expData.movingToPoleCorridorId == corridorId) return;
-        
-        expNav.BeginMovingToPole(transform.position, corridorId, corridorData);
-        SetState(State.MovingToPole);
-
-        Debug.Log($"[ExplMgr] Corridoio {corridorId} individuato → mi avvicino.");
-    }
 
     public void DoBacktrack(string targetNode, GraphNode targetData)
     {
         if (targetNode == null) { return; }
 
-        // Se il backtrack target è un polo corridoio, salta il viaggio fisico
-        // e vai direttamente alla porta successiva
+        // If the target is a corridor pole, skip the physical movement.
         if (targetNode.EndsWith("_A") || targetNode.EndsWith("_B"))
         {
-            backtrackTimer = 0f;
-            expData.currentNodeId  = targetNode;
-            Debug.Log($"[ExplMgr] Backtrack diretto a '{targetNode}' — salto viaggio fisico.");
-            state = State.Idle;
+            _backtrackTimer = 0f;
+            _expData.currentNodeId  = targetNode;
+            Debug.Log($"[StateMachine] Backtrack pointing to corridor node '{targetNode}' — Skip physical movement.");
+            _state = State.Idle;
             OnNextActionNeeded?.Invoke();
             return;
         }
 
-        backtrackTimer = 0f;
-        expNav.BacktrackToNode(targetData.position);
-        state = State.Backtracking;
+        _backtrackTimer = 0f;
+        _expNav.BacktrackToNode(targetData.position);
+        _state = State.Backtracking;
     }
 
     public bool TryTransition(State initialState, State endingState, Action action)

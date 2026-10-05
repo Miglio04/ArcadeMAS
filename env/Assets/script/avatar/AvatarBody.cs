@@ -32,24 +32,23 @@ public class AvatarBody : MonoBehaviour
         agent.SetDestination(GameObject.Find(dest).transform.position);
     }
 
-    // TODO: I do not understand why this is called, it's always called when the FOV is spawned.
-    // It's probably obsolete, check and remove if not needed.
-private void OnTriggerEnter(Collider other)
-{
-    Debug.Log("Agent " + root.name + " reached " + other.name);
 
-    // PORTE/VARCHI: rilevati dal COMPONENTE
-    DoorVarcoScript door = other.GetComponent<DoorVarcoScript>()
-                        ?? other.GetComponentInParent<DoorVarcoScript>();
-    if (door != null)
+    private void OnTriggerEnter(Collider other)
     {
-        if (!door.isOpen)
+        Debug.Log("Agent " + root.name + " reached " + other.name);
+
+        // PORTE/VARCHI: rilevati dal COMPONENTE
+        DoorVarcoScript door = other.GetComponent<DoorVarcoScript>()
+                            ?? other.GetComponentInParent<DoorVarcoScript>();
+        if (door != null)
         {
-            Debug.Log("[AvatarBody] Sfiorato " + other.name + " (DoorVarcoScript), apro.");
-            door.TryOpen();
+            if (!door.isOpen)
+            {
+                Debug.Log("[AvatarBody] Sfiorato " + other.name + " (DoorVarcoScript), apro.");
+                door.TryOpen();
+            }
+            return;
         }
-        return;
-    }
     
         if (!other.gameObject.name.Contains("counter") && (other.gameObject.tag == "Artifact"))
         {

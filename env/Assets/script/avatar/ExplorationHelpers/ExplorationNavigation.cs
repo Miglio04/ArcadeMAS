@@ -8,39 +8,40 @@ namespace script.avatar.ExplorationHelpers
 {
     public class ExplorationNavigation : MonoBehaviour
     {
-        private ExplorationData expData;
-        private NavMeshAgent navAgent;
+        private ExplorationData _expData;
+        private NavMeshAgent _navAgent;
         
-        public Vector3 AgentPosition => navAgent.transform.position;
-        public bool PathPending => navAgent.pathPending;
-        public bool ArrivedAtPole => navAgent.remainingDistance<expData.poleArrivalThreshold;
-        public bool Arrived => IsWithin(expData.arrivalThreshold) && HasPath;
-        public bool ArrivedAtConnector => IsWithin(expData.arrivalThreshold * 2f);
-        public bool InsideInspectionDistance => IsWithin(expData.inspectionDistance);
-        public bool HasPath => navAgent.hasPath;
+        public Vector3 AgentPosition => _navAgent.transform.position;
+        public bool PathPending => _navAgent.pathPending;
+        public bool ArrivedAtPole => _navAgent.remainingDistance<_expData.poleArrivalThreshold;
+        public bool Arrived => IsWithin(_expData.arrivalThreshold) && HasPath;
+        public bool ArrivedAtConnector => IsWithin(_expData.arrivalThreshold * 2f);
+        public bool InsideInspectionDistance => IsWithin(_expData.inspectionDistance);
+        public bool HasPath => _navAgent.hasPath;
 
-        public void Stop() => navAgent.isStopped = true;
+        public void Stop() => _navAgent.isStopped = true;
 
-        private bool IsWithin(float remainingDistance) => navAgent.remainingDistance <= remainingDistance;
+        private bool IsWithin(float remainingDistance) => _navAgent.remainingDistance <= remainingDistance;
 
         private void Awake()
         {
-            expData = GetComponent<ExplorationData>();
-            navAgent = GetComponent<NavMeshAgent>();
+            _expData = GetComponent<ExplorationData>();
+            _navAgent = GetComponent<NavMeshAgent>();
         }
         
         public static event System.Action<int> OnStairsTraversed;
+        public static event System.Action<string, string, Vector3> OnMovingToPole;
 
         public FloorNode PrepareExploration()
         {
-            foreach (var floor in expData.buildingGraph.floors)
+            foreach (var floor in _expData.buildingGraph.floors)
                 floor.explored = false;
     
-            Vector3   agentPos  = navAgent.transform.position;
+            Vector3   agentPos  = _navAgent.transform.position;
             FloorNode floorData = null;
             float     minDist   = float.MaxValue;
     
-            foreach (var floor in expData.buildingGraph.floors)
+            foreach (var floor in _expData.buildingGraph.floors)
             {
                 foreach (var room in floor.roomObjects)
                 {
@@ -52,27 +53,27 @@ namespace script.avatar.ExplorationHelpers
     
             if (floorData == null || floorData.spawnObject == null)
             {
-                Debug.LogWarning("[ExplMgr] Piano non trovato o spawnObject mancante!");
+                Debug.LogWarning("[ExplNav] Floor not found or missing spawnObject!");
                 return null;
             }
     
             Vector3 startPos = floorData.spawnPosition;
             if (Vector3.Distance(agentPos, startPos) > 0.05f)
             {
-                navAgent.enabled = false;
-                navAgent.transform.position = startPos;
-                navAgent.enabled = true;
-                navAgent.Warp(startPos);
+                _navAgent.enabled = false;
+                _navAgent.transform.position = startPos;
+                _navAgent.enabled = true;
+                _navAgent.Warp(startPos);
             }
             return floorData;
         }
         
-        public void SetDestination(Vector3 destination) => navAgent.SetDestination(destination);
-    
+        public void SetDestination(Vector3 destination) => _navAgent.SetDestination(destination);
+
 
         public void BacktrackToNode(Vector3 targetPos)
         {
-            navAgent.isStopped = false;
+            _navAgent.isStopped = false;
             SetDestination(targetPos);
         }
 
@@ -86,9 +87,9 @@ namespace script.avatar.ExplorationHelpers
 
         public void StartRotation(bool isRoom)
         {
-            expData.inRoomMode    = isRoom;
-            expData.rotationAccum = 0f;
-            navAgent.isStopped = true;
+            _expData.inRoomMode    = isRoom;
+            _expData.rotationAccum = 0f;
+            _navAgent.isStopped = true;
         }
 
         private Vector3 ComputeNavigationTarget(
@@ -100,26 +101,26 @@ namespace script.avatar.ExplorationHelpers
             Vector3 enterTarget;
             if (isTargetCorridor)
             {
-                // Corridoio: comportamento originale — entra oltre la porta
+                // Corridor: move through door
                 Vector3 doorNormal = doorScript != null ? doorScript.transform.forward : transform.forward;
                 Vector3 toDoor     = (edge.position - transform.position).normalized;
                 if (Vector3.Dot(doorNormal, toDoor) < 0) doorNormal = -doorNormal;
-                enterTarget = edge.position + doorNormal * expData.enterOffset;
+                enterTarget = edge.position + doorNormal * _expData.enterOffset;
             }
             else
             {
-                // Stanza: vai al centro del GameObject della stanza
-                var floorData = expData.buildingGraph?.GetFloor(expData.currentFloor);
+                // Room: move towards the center of the room GameObject
+                var floorData = _expData.buildingGraph?.GetFloor(_expData.currentFloor);
                 var roomObj   = ExplorationUtils.FindRoom(newNodeId, floorData);
                 if (roomObj != null)
                     enterTarget = ExplorationUtils.GetRoomCenter(roomObj);
                 else
                 {
-                    // Fallback: offset oltre la porta
+                    // Fallback: offset behind the door
                     Vector3 doorNormal = doorScript != null ? doorScript.transform.forward : transform.forward;
                     Vector3 toDoor     = (edge.position - transform.position).normalized;
                     if (Vector3.Dot(doorNormal, toDoor) < 0) doorNormal = -doorNormal;
-                    enterTarget = edge.position + doorNormal * expData.enterOffset;
+                    enterTarget = edge.position + doorNormal * _expData.enterOffset;
                 }
             }
             return enterTarget;
@@ -128,254 +129,253 @@ namespace script.avatar.ExplorationHelpers
         
         public bool IsAdjacentRoomACorridorWithNavigation(string adjRoom)
         {
-            // Se adjRoom è un corridoio con poli, non trattarlo come stanza normale
             var adjCorridor = ExplorationUtils.FindCorridorData(adjRoom);
             if (adjCorridor != null)
             {
                 BeginMovingToPole1(adjRoom, adjCorridor, false);
-                Debug.Log($"[ExplMgr] Destinazione è corridoio '{adjRoom}' → vado al polo.");
+                Debug.Log($"[ExplNav] The destination is corridor '{adjRoom}'." +
+                          $"Moving to pole.");
                 return true;
             }
 
             return false;
         }
+            
         
-    
-    
-    public void BeginMovingToPole(string roomId, CorridorData corridorData)
-    {
-        float d1 = Vector3.Distance(transform.position, corridorData.Pole1Position);
-        float d2 = Vector3.Distance(transform.position, corridorData.Pole2Position);
-        expData.SetPendingCorridorAndPole(roomId, 
-            d1 <= d2 ? "1" : "2", 
-            d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
-        expData.movingToPoleCorridorId = roomId;
-        expData.movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        SetDestination(d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
-    }
-    
-    public void BeginMovingToPole(Vector3 startPos, string startNodeId, CorridorData spawnCorridor)
-    {
-        float d1 = Vector3.Distance(startPos, spawnCorridor.Pole1Position);
-        float d2 = Vector3.Distance(startPos, spawnCorridor.Pole2Position);
-        expData.SetPendingCorridorAndPole(startNodeId, 
-            d1 <= d2 ? "1" : "2", 
-            d1 <= d2 ? spawnCorridor.Pole1Position : spawnCorridor.Pole2Position);
-        expData.movingToPoleCorridorId = startNodeId;
-        expData.movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        SetDestination(d1 <= d2 ? spawnCorridor.Pole1Position : spawnCorridor.Pole2Position);
-    }
-    
-    public void BeginMovingToPole1(CorridorData corridor, bool nullDoor)
-    {
-        if(nullDoor) expData.pendingArrivalDoor = null;
-        expData.SetPendingCorridorAndPole(corridor.corridorId, "1",  corridor.Pole1Position);
-        expData.movingToPoleCorridorId = corridor.corridorId;
-        expData.movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        SetDestination(corridor.Pole1Position);
-    }
-
-    private void BeginMovingToPole1(string roomId, CorridorData corridor, bool nullDoor)
-    {
-        if(nullDoor) expData.pendingArrivalDoor = null;
-        expData.SetPendingCorridorAndPole(roomId, "1",  corridor.Pole1Position);
-        expData.movingToPoleCorridorId = roomId;
-        expData.movingToPoleTimer      = 0f;
-        navAgent.isStopped     = false;
-        SetDestination(corridor.Pole1Position);
-    }
-    public void BeginTransitingToB(Vector3 poleAPos, Vector3 targetB)
-    {
-        navAgent.isStopped = false;
-        SetDestination(targetB);
-    }
-    
-    public void MoveToNextEdge(GraphEdge nextEdge)
-    {
-        expData.currentEdge = nextEdge;
-        navAgent.isStopped = false;
-        SetDestination(nextEdge.position);
-    }
-
-    public void MoveToAdjacentRoomWithTimeout(Vector3 adjPos)
-    {
-        expData.inRoomMode             = false;
-        expData.movingToPoleCorridorId = null;
-        expData.idleTargetCorridorId   = null;
-
-        navAgent.isStopped = false;
-        SetDestination(adjPos);
-        expData.enteringRoomTimer   = 0f;
-        expData.enteringRoomTimeout = 6f;
-    }
-
-    public void MoveToRoomCenter(string roomId, Vector3 center)
-    {
-        expData.currentNodeId = roomId;
-        navAgent.isStopped = false;
-        SetDestination(center);
-    }
-    
-    //PORTE PER LE SCALE
-    public IEnumerator TraverseStairsThen(int targetFloor) {
-        var activeConnector = expData.pendingConnector;
-
-        // Apri porta di partenza
-        bool isNormalDir = (activeConnector == null || activeConnector.floorFrom != targetFloor);
-        var departureDoorObj = isNormalDir
-            ? activeConnector?.triggerStartObject
-            : activeConnector.triggerEndObject;
-
-        if (departureDoorObj != null)
+        
+        public void BeginMovingToPole(string roomId, CorridorData corridorData)
         {
-            var departureDoor = departureDoorObj.GetComponentInChildren<DoorVarcoScript>();
-            if (departureDoor != null && !departureDoor.IsTraversable)
+            float d1 = Vector3.Distance(transform.position, corridorData.Pole1Position);
+            float d2 = Vector3.Distance(transform.position, corridorData.Pole2Position);
+            OnMovingToPole?.Invoke(roomId,
+                d1 <= d2 ? "1" : "2",
+                d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
+            _expData.movingToPoleCorridorId = roomId;
+            _expData.movingToPoleTimer      = 0f;
+            _navAgent.isStopped     = false;
+            SetDestination(d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
+        }
+        
+        public void BeginMovingToPole(Vector3 startPos, string startNodeId, CorridorData corridorData)
+        {
+            float d1 = Vector3.Distance(startPos, corridorData.Pole1Position);
+            float d2 = Vector3.Distance(startPos, corridorData.Pole2Position);
+            OnMovingToPole?.Invoke(startNodeId,
+                d1 <= d2 ? "1" : "2",
+                d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
+            _expData.movingToPoleCorridorId = startNodeId;
+            _expData.movingToPoleTimer      = 0f;
+            _navAgent.isStopped     = false;
+            SetDestination(d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
+        }
+        
+        public void BeginMovingToPole1(CorridorData corridor, bool nullDoor)
+        {
+            if(nullDoor) _expData.pendingArrivalDoor = null;
+            OnMovingToPole?.Invoke(corridor.corridorId, "1",  corridor.Pole1Position);
+            _expData.movingToPoleCorridorId = corridor.corridorId;
+            _expData.movingToPoleTimer      = 0f;
+            _navAgent.isStopped     = false;
+            SetDestination(corridor.Pole1Position);
+        }
+
+        private void BeginMovingToPole1(string roomId, CorridorData corridor, bool nullDoor)
+        {
+            if(nullDoor) _expData.pendingArrivalDoor = null;
+            OnMovingToPole?.Invoke(roomId, "1",  corridor.Pole1Position);
+            _expData.movingToPoleCorridorId = roomId;
+            _expData.movingToPoleTimer      = 0f;
+            _navAgent.isStopped     = false;
+            SetDestination(corridor.Pole1Position);
+        }
+        public void BeginTransitingToB(Vector3 poleAPos, Vector3 targetB)
+        {
+            _navAgent.isStopped = false;
+            SetDestination(targetB);
+        }
+        
+        public void MoveToNextEdge(GraphEdge nextEdge)
+        {
+            _expData.currentEdge = nextEdge;
+            _navAgent.isStopped = false;
+            SetDestination(nextEdge.position);
+        }
+
+        public void MoveToAdjacentRoomWithTimeout(Vector3 adjPos)
+        {
+            _expData.inRoomMode             = false;
+            _expData.movingToPoleCorridorId = null;
+            _expData.idleTargetCorridorId   = null;
+
+            _navAgent.isStopped = false;
+            SetDestination(adjPos);
+            _expData.enteringRoomTimer   = 0f;
+            _expData.enteringRoomTimeout = 6f;
+        }
+
+        public void MoveToRoomCenter(string roomId, Vector3 center)
+        {
+            _expData.currentNodeId = roomId;
+            _navAgent.isStopped = false;
+            SetDestination(center);
+        }
+        
+        public IEnumerator TraverseStairsThen(int targetFloor) {
+            var activeConnector = _expData.pendingConnector;
+
+            // Open the first door
+            bool isNormalDir = (activeConnector == null || activeConnector.floorFrom != targetFloor);
+            var departureDoorObj = isNormalDir
+                ? activeConnector?.triggerStartObject
+                : activeConnector.triggerEndObject;
+
+            if (departureDoorObj != null)
             {
-                departureDoor.TryOpen();
-                yield return new WaitForSeconds(0.6f);
+                var departureDoor = departureDoorObj.GetComponentInChildren<DoorVarcoScript>();
+                if (departureDoor != null && !departureDoor.IsTraversable)
+                {
+                    departureDoor.TryOpen();
+                    yield return new WaitForSeconds(0.6f);
+                }
             }
-        }
-        
-        if (activeConnector == null) throw new NoNullAllowedException(nameof(activeConnector) + " cannot be null");
+            
+            if (activeConnector == null) throw new NoNullAllowedException(nameof(activeConnector) + " cannot be null");
 
-        // Aspetta che il NavMesh porti l'agente fisicamente all'altro piano
-        // (il NavMesh cammina sulle scale autonomamente)
-        Vector3 destination = isNormalDir
-            ? activeConnector.triggerEndPosition
-            : activeConnector.triggerStartPosition;
+            // Wait for the NavMesh to physically move the agent to the other floor
+            Vector3 destination = isNormalDir
+                ? activeConnector.triggerEndPosition
+                : activeConnector.triggerStartPosition;
 
-        navAgent.isStopped = false;
-        SetDestination(destination);
+            _navAgent.isStopped = false;
+            SetDestination(destination);
 
-        // Aspetta l'arrivo
-        yield return new WaitForSeconds(0.5f); // piccolo delay per far partire il path
-        while (PathPending || ArrivedAtConnector)
-        {
-            yield return null;
-        }
-
-        // Apri porta di arrivo
-        var arrivalDoorObj = isNormalDir
-            ? activeConnector.triggerEndObject
-            : activeConnector.triggerStartObject;
-
-        if (arrivalDoorObj != null)
-        {
-            var arrivalDoor = arrivalDoorObj.GetComponentInChildren<DoorVarcoScript>();
-            if (arrivalDoor != null && !arrivalDoor.IsTraversable)
+            // Wait for the arrival of the agent
+            yield return new WaitForSeconds(0.5f);
+            while (PathPending || ArrivedAtConnector)
             {
-                arrivalDoor.TryOpen();
-                yield return new WaitForSeconds(0.6f);
+                yield return null;
             }
+
+            // Open arrival door
+            var arrivalDoorObj = isNormalDir
+                ? activeConnector.triggerEndObject
+                : activeConnector.triggerStartObject;
+
+            if (arrivalDoorObj != null)
+            {
+                var arrivalDoor = arrivalDoorObj.GetComponentInChildren<DoorVarcoScript>();
+                if (arrivalDoor != null && !arrivalDoor.IsTraversable)
+                {
+                    arrivalDoor.TryOpen();
+                    yield return new WaitForSeconds(0.6f);
+                }
+            }
+            
+            OnStairsTraversed?.Invoke(targetFloor);
         }
         
-        OnStairsTraversed?.Invoke(targetFloor);
-    }
-    
-    
-    
-    public bool FindAndExploreAdjacentFloors(List<FloorNode> unexplored)
-    {
-        unexplored.Sort((a, b) =>
-            Mathf.Abs(a.floorIndex - expData.currentFloor)
-                .CompareTo(Mathf.Abs(b.floorIndex - expData.currentFloor)));
-
-        foreach (var targetFloor in unexplored)
+        
+        
+        public bool FindAndExploreAdjacentFloors(List<FloorNode> unexplored)
         {
-            var connectors = expData.buildingGraph.GetConnectors(
-                expData.currentFloor, 
-                targetFloor.floorIndex
-            );
-            connectors.RemoveAll(c => expData.traversedConnectors.Contains(c.id));
-            if (connectors.Count == 0) continue;
+            unexplored.Sort((a, b) =>
+                Mathf.Abs(a.floorIndex - _expData.currentFloor)
+                    .CompareTo(Mathf.Abs(b.floorIndex - _expData.currentFloor)));
 
-            connectors.Sort((a, b) => a.costUp.CompareTo(b.costUp));
-            expData.pendingConnector = connectors[0];
-
-            bool isReverse = (expData.pendingConnector.floorFrom != expData.currentFloor);
-            Vector3 navTarget = isReverse
-                ? expData.pendingConnector.triggerEndPosition
-                : expData.pendingConnector.triggerStartPosition;
-
-            Debug.Log($"[ExplMgr] Piano {expData.currentFloor} → piano {targetFloor.floorIndex} " +
-                      $"via '{expData.pendingConnector.id}' (diretto)");
-            navAgent.isStopped = false;
-            SetDestination(navTarget);
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool FindAndExploreOtherFloors(List<FloorNode> unexplored)
-    {
-        Debug.Log($"[ExplMgr] Nessun connettore diretto da piano {expData.currentFloor}. " +
-                  $"Cerco percorso indiretto...");
-
-        unexplored.Sort((a, b) => a.floorIndex.CompareTo(b.floorIndex));
-
-        // Piani già visitati, ordinati per vicinanza al piano corrente
-        var visitedFloors = new List<int>(expData.floorGraphs.Keys);
-        visitedFloors.Sort((a, b) =>
-            Mathf.Abs(a - expData.currentFloor).CompareTo(Mathf.Abs(b - expData.currentFloor)));
-
-        foreach (var targetFloor in unexplored)
-        {
-            foreach (int midFloor in visitedFloors)
+            foreach (var targetFloor in unexplored)
             {
-                if (midFloor == expData.currentFloor) continue;
+                var connectors = _expData.buildingGraph.GetConnectors(
+                    _expData.currentFloor, 
+                    targetFloor.floorIndex
+                );
+                connectors.RemoveAll(c => _expData.traversedConnectors.Contains(c.id));
+                if (connectors.Count == 0) continue;
 
-                // Il piano intermedio deve avere un connettore non traversato verso targetFloor
-                var connToTarget = expData.buildingGraph.GetConnectors(midFloor, targetFloor.floorIndex);
-                connToTarget.RemoveAll(c => expData.traversedConnectors.Contains(c.id));
-                if (connToTarget.Count == 0) continue;
+                connectors.Sort((a, b) => a.costUp.CompareTo(b.costUp));
+                _expData.pendingConnector = connectors[0];
 
-                // Cerca il connettore tra currentFloor e midFloor
-                // (può essere già traversato — vogliamo ri-attraversarlo)
-                var connToMid = expData.buildingGraph.GetConnectors(expData.currentFloor, midFloor);
-                if (connToMid.Count == 0) continue;
-
-                connToMid.Sort((a, b) => a.costUp.CompareTo(b.costUp));
-                expData.pendingConnector = connToMid[0];
-
-                bool isReverse = (expData.pendingConnector.floorFrom != expData.currentFloor);
+                bool isReverse = (_expData.pendingConnector.floorFrom != _expData.currentFloor);
                 Vector3 navTarget = isReverse
-                    ? expData.pendingConnector.triggerEndPosition
-                    : expData.pendingConnector.triggerStartPosition;
+                    ? _expData.pendingConnector.triggerEndPosition
+                    : _expData.pendingConnector.triggerStartPosition;
 
-                Debug.Log($"[ExplMgr] Percorso indiretto: piano {expData.currentFloor} → piano {midFloor} " +
-                          $"→ piano {targetFloor.floorIndex} via '{expData.pendingConnector.id}'");
-                navAgent.isStopped = false;
+                Debug.Log($"[ExplNav] Moving from floor {_expData.currentFloor} to floor {targetFloor.floorIndex} " +
+                          $"through connector '{_expData.pendingConnector.id}'");
+                _navAgent.isStopped = false;
                 SetDestination(navTarget);
                 return true;
             }
+
+            return false;
         }
 
-        return false;
-    }
-
-
-    public void MoveToNextTarget(bool isTargetCorridor, DoorVarcoScript doorScript, GraphEdge edge, string newNodeId)
-    {
-        // Calcolo target di navigazione
-        Vector3 enterTarget = ComputeNavigationTarget(isTargetCorridor, doorScript, edge, newNodeId);
-
-        if (!NavMesh.SamplePosition(enterTarget, out var hit, 2f, NavMesh.AllAreas))
+        public bool FindAndExploreOtherFloors(List<FloorNode> unexplored)
         {
-            enterTarget = edge.position;
-            if (!NavMesh.SamplePosition(enterTarget, out hit, 2f, NavMesh.AllAreas))
-            {
-                hit.position = edge.position;
-                Debug.LogWarning($"[ExplMgr] NavMesh non trovato vicino a '{newNodeId}'.");
-            }
-        }
-        enterTarget = hit.position;
+            Debug.Log($"[ExplNav] No connector connected from {_expData.currentFloor} to an unexplored floor. " +
+                      $"Looking for an indirect path...");
 
-        navAgent.isStopped = false;
-        SetDestination(enterTarget);
-    }
+            unexplored.Sort((a, b) => a.floorIndex.CompareTo(b.floorIndex));
+
+            // Get already visited floors and order them by distance
+            var visitedFloors = new List<int>(_expData.floorGraphs.Keys);
+            visitedFloors.Sort((a, b) =>
+                Mathf.Abs(a - _expData.currentFloor).CompareTo(Mathf.Abs(b - _expData.currentFloor)));
+
+            foreach (var targetFloor in unexplored)
+            {
+                foreach (int midFloor in visitedFloors)
+                {
+                    if (midFloor == _expData.currentFloor) continue;
+
+                    // The middle floor must have a non-traversed connector linked to the unexplored floor
+                    var connToTarget = 
+                        _expData.buildingGraph.GetConnectors(midFloor, targetFloor.floorIndex);
+                    connToTarget.RemoveAll(c => _expData.traversedConnectors.Contains(c.id));
+                    if (connToTarget.Count == 0) continue;
+
+                    // Look for the connector between currentFloor and midFloor
+                    var connToMid = 
+                        _expData.buildingGraph.GetConnectors(_expData.currentFloor, midFloor);
+                    if (connToMid.Count == 0) continue;
+
+                    connToMid.Sort((a, b) => a.costUp.CompareTo(b.costUp));
+                    _expData.pendingConnector = connToMid[0];
+
+                    bool isReverse = (_expData.pendingConnector.floorFrom != _expData.currentFloor);
+                    Vector3 navTarget = isReverse
+                        ? _expData.pendingConnector.triggerEndPosition
+                        : _expData.pendingConnector.triggerStartPosition;
+
+                    Debug.Log("[ExplNav] Indirect path: " +
+                              $"moving from floor {_expData.currentFloor} to floor {midFloor} " +
+                              $" and floor {targetFloor.floorIndex} through '{_expData.pendingConnector.id}'");
+                    _navAgent.isStopped = false;
+                    SetDestination(navTarget);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+
+        public void MoveToNextTarget(bool isTargetCorridor, DoorVarcoScript doorScript, GraphEdge edge, string newNodeId)
+        {
+            Vector3 enterTarget = ComputeNavigationTarget(isTargetCorridor, doorScript, edge, newNodeId);
+
+            if (!NavMesh.SamplePosition(enterTarget, out var hit, 2f, NavMesh.AllAreas))
+            {
+                enterTarget = edge.position;
+                if (!NavMesh.SamplePosition(enterTarget, out hit, 2f, NavMesh.AllAreas))
+                {
+                    hit.position = edge.position;
+                    Debug.LogWarning($"[ExplNav] NavMesh not found near '{newNodeId}'.");
+                }
+            }
+            enterTarget = hit.position;
+
+            _navAgent.isStopped = false;
+            SetDestination(enterTarget);
+        }
     }
 }

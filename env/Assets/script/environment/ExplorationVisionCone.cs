@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using script.avatar;
 using script.avatar.ExplorationHelpers;
 using UnityEngine;
 
@@ -75,7 +74,6 @@ public class ExplorationVisionCone : VisionCone
 
     // ── Stato interno — rilevamento poli ──────────────────────────────────────
     private HashSet<string>     reportedPoles = new HashSet<string>();
-    private ExplorationManager  explorationManager;
     private ExplorationData  explorationData;
 
     // ── Stato interno — scan transito (ex-DoorSensor) ─────────────────────────
@@ -108,6 +106,11 @@ public class ExplorationVisionCone : VisionCone
     /// </summary>
     public static event System.Action<DoorVarcoScript, string, int> OnDoorDiscovered;
 
+    /// <summary>
+    /// Object discovered during exploration.
+    /// </summary>
+    public static event System.Action<string, string, string, int, float, float, float> OnDiscoveredObject;
+
     // ── Unity lifecycle ───────────────────────────────────────────────────────
     // NOTA: Start() e Update() del VisionCone base sono private, quindi non
     // possiamo chiamare base.Start() / base.Update(). Reinizializziamo qui
@@ -117,7 +120,6 @@ public class ExplorationVisionCone : VisionCone
     protected new void Start()
     {
         // Replica la logica di VisionCone.Start() (che è private nel base)
-        explorationManager  = transform.parent?.GetComponent<ExplorationManager>();
         explorationData = transform.parent?.GetComponent<ExplorationData>();
         // Usiamo campi propri per il timer (i campi del base sono private)
         exploScanInterval   = 1f / Mathf.Max(1, scanFrequency);
@@ -285,6 +287,8 @@ public class ExplorationVisionCone : VisionCone
             door.side = cross.y >= 0 ? "RIGHT" : "LEFT";
 
             transitSeen.Add(doorName);
+            
+            Debug.Log($"[ExplorationVisionCone] seen door: {doorName}");
 
             // Notifica ExplorationManager
             OnDoorDiscovered?.Invoke(door, transitCorridorId, transitFwCounter);
@@ -357,7 +361,7 @@ private void ScanForRoomObjects()
         {
             Debug.Log($"[EVC] '{id}' VISTO in '{roomId}'");
 
-            explorationData?.RegisterDiscoveredObject(
+            OnDiscoveredObject?.Invoke(
                 id, roomId, artifact.ArtifactType.ToString(),
                 int.Parse(artifact.port),
                 artifact.transform.position.x,
@@ -377,7 +381,7 @@ private void ScanForRoomObjects()
         }
         else if (_lastSeenRoom.TryGetValue(id, out var lastRoom) && lastRoom != roomId)
         {
-            explorationData?.RegisterDiscoveredObject(
+            OnDiscoveredObject?.Invoke(
                 id, roomId, artifact.ArtifactType.ToString(),
                 int.Parse(artifact.port),
                 artifact.transform.position.x,
