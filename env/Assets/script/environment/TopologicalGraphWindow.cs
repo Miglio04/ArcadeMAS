@@ -728,7 +728,7 @@ public class TopologicalGraphWindow : EditorWindow
         
         // Se -1 o il piano selezionato non esiste più, usa il piano corrente
         if (selectedFloor == -1 || !expData.AllFloorGraphs.ContainsKey(selectedFloor))
-            return grapHconstruction.Graph;
+            return expData.floorGraphs.TryGetValue(expData.currentFloor, out var graph) ? graph : null;
         
         expData.AllFloorGraphs.TryGetValue(selectedFloor, out var g);
         return g;
@@ -737,7 +737,7 @@ public class TopologicalGraphWindow : EditorWindow
         private string GetCurrentNodeId()
     {
         if (manager == null) return null;
-        return expData.CurrentNodeId;
+        return expData.currentNodeId;
     }
 
     private int CountNodes(TopologicalGraph g)

@@ -1,5 +1,5 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System;
+using System.Collections;
 using System.Data;
 using UnityEngine;
 using UnityEngine.AI;
@@ -18,19 +18,19 @@ namespace script.avatar.ExplorationHelpers
         public bool ArrivedAtConnector => IsWithin(_expData.arrivalThreshold * 2f);
         public bool InsideInspectionDistance => IsWithin(_expData.inspectionDistance);
         public bool HasPath => _navAgent.hasPath;
-
-        public void Stop() => _navAgent.isStopped = true;
-
-        private bool IsWithin(float remainingDistance) => _navAgent.remainingDistance <= remainingDistance;
-
+        
+        public static event Action<int> OnStairsTraversed;
+        public static event Action<string, string, Vector3> OnMovingToPole;
+        
         private void Awake()
         {
             _expData = GetComponent<ExplorationData>();
             _navAgent = GetComponent<NavMeshAgent>();
         }
-        
-        public static event System.Action<int> OnStairsTraversed;
-        public static event System.Action<string, string, Vector3> OnMovingToPole;
+
+        public void Stop() => _navAgent.isStopped = true;
+
+        private bool IsWithin(float remainingDistance) => _navAgent.remainingDistance <= remainingDistance;
 
         public FloorNode PrepareExploration()
         {
@@ -132,7 +132,7 @@ namespace script.avatar.ExplorationHelpers
             var adjCorridor = ExplorationUtils.FindCorridorData(adjRoom);
             if (adjCorridor != null)
             {
-                BeginMovingToPole1(adjRoom, adjCorridor, false);
+                BeginMovingToFirstPole(adjRoom, adjCorridor, false);
                 Debug.Log($"[ExplNav] The destination is corridor '{adjRoom}'." +
                           $"Moving to pole.");
                 return true;
@@ -169,7 +169,7 @@ namespace script.avatar.ExplorationHelpers
             SetDestination(d1 <= d2 ? corridorData.Pole1Position : corridorData.Pole2Position);
         }
         
-        public void BeginMovingToPole1(CorridorData corridor, bool nullDoor)
+        public void BeginMovingToFirstPole(CorridorData corridor, bool nullDoor)
         {
             if(nullDoor) _expData.pendingArrivalDoor = null;
             OnMovingToPole?.Invoke(corridor.corridorId, "1",  corridor.Pole1Position);
@@ -179,7 +179,7 @@ namespace script.avatar.ExplorationHelpers
             SetDestination(corridor.Pole1Position);
         }
 
-        private void BeginMovingToPole1(string roomId, CorridorData corridor, bool nullDoor)
+        private void BeginMovingToFirstPole(string roomId, CorridorData corridor, bool nullDoor)
         {
             if(nullDoor) _expData.pendingArrivalDoor = null;
             OnMovingToPole?.Invoke(roomId, "1",  corridor.Pole1Position);
@@ -188,7 +188,7 @@ namespace script.avatar.ExplorationHelpers
             _navAgent.isStopped     = false;
             SetDestination(corridor.Pole1Position);
         }
-        public void BeginTransitingToB(Vector3 poleAPos, Vector3 targetB)
+        public void BeginTransitingToSecondPole(Vector3 targetB)
         {
             _navAgent.isStopped = false;
             SetDestination(targetB);
@@ -273,89 +273,17 @@ namespace script.avatar.ExplorationHelpers
             
             OnStairsTraversed?.Invoke(targetFloor);
         }
-        
-        
-        
-        public bool FindAndExploreAdjacentFloors(List<FloorNode> unexplored)
+
+
+        public void MoveToNextFloor()
         {
-            unexplored.Sort((a, b) =>
-                Mathf.Abs(a.floorIndex - _expData.currentFloor)
-                    .CompareTo(Mathf.Abs(b.floorIndex - _expData.currentFloor)));
-
-            foreach (var targetFloor in unexplored)
-            {
-                var connectors = _expData.buildingGraph.GetConnectors(
-                    _expData.currentFloor, 
-                    targetFloor.floorIndex
-                );
-                connectors.RemoveAll(c => _expData.traversedConnectors.Contains(c.id));
-                if (connectors.Count == 0) continue;
-
-                connectors.Sort((a, b) => a.costUp.CompareTo(b.costUp));
-                _expData.pendingConnector = connectors[0];
-
-                bool isReverse = (_expData.pendingConnector.floorFrom != _expData.currentFloor);
-                Vector3 navTarget = isReverse
-                    ? _expData.pendingConnector.triggerEndPosition
-                    : _expData.pendingConnector.triggerStartPosition;
-
-                Debug.Log($"[ExplNav] Moving from floor {_expData.currentFloor} to floor {targetFloor.floorIndex} " +
-                          $"through connector '{_expData.pendingConnector.id}'");
-                _navAgent.isStopped = false;
-                SetDestination(navTarget);
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool FindAndExploreOtherFloors(List<FloorNode> unexplored)
-        {
-            Debug.Log($"[ExplNav] No connector connected from {_expData.currentFloor} to an unexplored floor. " +
-                      $"Looking for an indirect path...");
-
-            unexplored.Sort((a, b) => a.floorIndex.CompareTo(b.floorIndex));
-
-            // Get already visited floors and order them by distance
-            var visitedFloors = new List<int>(_expData.floorGraphs.Keys);
-            visitedFloors.Sort((a, b) =>
-                Mathf.Abs(a - _expData.currentFloor).CompareTo(Mathf.Abs(b - _expData.currentFloor)));
-
-            foreach (var targetFloor in unexplored)
-            {
-                foreach (int midFloor in visitedFloors)
-                {
-                    if (midFloor == _expData.currentFloor) continue;
-
-                    // The middle floor must have a non-traversed connector linked to the unexplored floor
-                    var connToTarget = 
-                        _expData.buildingGraph.GetConnectors(midFloor, targetFloor.floorIndex);
-                    connToTarget.RemoveAll(c => _expData.traversedConnectors.Contains(c.id));
-                    if (connToTarget.Count == 0) continue;
-
-                    // Look for the connector between currentFloor and midFloor
-                    var connToMid = 
-                        _expData.buildingGraph.GetConnectors(_expData.currentFloor, midFloor);
-                    if (connToMid.Count == 0) continue;
-
-                    connToMid.Sort((a, b) => a.costUp.CompareTo(b.costUp));
-                    _expData.pendingConnector = connToMid[0];
-
-                    bool isReverse = (_expData.pendingConnector.floorFrom != _expData.currentFloor);
-                    Vector3 navTarget = isReverse
-                        ? _expData.pendingConnector.triggerEndPosition
-                        : _expData.pendingConnector.triggerStartPosition;
-
-                    Debug.Log("[ExplNav] Indirect path: " +
-                              $"moving from floor {_expData.currentFloor} to floor {midFloor} " +
-                              $" and floor {targetFloor.floorIndex} through '{_expData.pendingConnector.id}'");
-                    _navAgent.isStopped = false;
-                    SetDestination(navTarget);
-                    return true;
-                }
-            }
-
-            return false;
+            bool isReverse = (_expData.pendingConnector.floorFrom != _expData.currentFloor);
+            Vector3 navTarget = isReverse
+                ? _expData.pendingConnector.triggerEndPosition
+                : _expData.pendingConnector.triggerStartPosition;
+            
+            _navAgent.isStopped = false;
+            SetDestination(navTarget);
         }
 
 

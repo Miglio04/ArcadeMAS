@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using script.avatar.ExplorationHelpers.Interfaces;
 using UnityEngine;
 
@@ -119,7 +118,7 @@ namespace script.avatar.ExplorationHelpers
             foreach (string roomId in fd.roomIds)
             {
                 if (roomId == _expData.currentNodeId || roomId == connectorForDoor.id) continue;
-                if (!_graphConstruction.IsNodeNull(roomId, out _)) continue; // already visited
+                if (!_graphConstruction.GraphReader.IsNodeNull(roomId)) continue; // already visited
                 var rObj = ExplorationUtils.FindRoom(roomId, fd);
                 if (rObj == null) continue;
                 float d = Vector3.Distance(door.transform.position, rObj.transform.position);
@@ -157,8 +156,9 @@ namespace script.avatar.ExplorationHelpers
 
         public void SetupAdjacentRoomAsRoom(string adjRoom, Vector3 adjPos, string connNodeId, string adjDoorName)
         {
-            _graphConstruction.AddRoomNodeAndEnterRoom(connNodeId, adjDoorName, adjRoom, adjPos);
-
+            _graphConstruction.AddRoomNodeToGraph(adjRoom, adjPos, false, null, connNodeId, adjDoorName);
+            _expData.currentNodeId = adjRoom;
+            
             _expNav.MoveToAdjacentRoomWithTimeout(adjPos);
             _stateMachine.SetState(State.EnteringRoom);
 

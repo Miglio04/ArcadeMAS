@@ -162,7 +162,7 @@ namespace script.avatar.ExplorationHelpers
         }
     }
 
-    private static void UpdateInsideRoom() => OnRotationRequested?.Invoke(true);
+    private void UpdateInsideRoom() => OnRotationRequested?.Invoke(true);
 
     private void UpdateBacktracking()
     {
@@ -177,10 +177,12 @@ namespace script.avatar.ExplorationHelpers
         {
             _backtrackTimer = 0f;
             
-            _expData.currentNodeId = _graphConstruction.GetCurrentNodeId();
+            _expData.currentNodeId = _graphConstruction.GraphReader.CurrentNodeId;
             if (string.IsNullOrEmpty(_expData.currentNodeId)) { OnCurrentNodeNullAfterBacktracking?.Invoke(); return; }
 
-            Debug.Log($"[StateMachine] Backtrack completed in {_expData.currentNodeId}. Waiting for next action.");
+            Debug.Log(
+                $"[StateMachine] Backtrack completed in {_expData.currentNodeId}." +
+                $" Waiting for next action.");
             _state = State.Idle;
             OnNextActionNeeded?.Invoke();
         }
@@ -227,7 +229,8 @@ namespace script.avatar.ExplorationHelpers
         
     public void HandlePoleTouched(string corridorId, string poleId, Vector3 polePos)
     {
-        Debug.Log($"[StateMachine] Physical signal sent by {corridorId}_{poleId}. State: {_state}");
+        Debug.Log($"[StateMachine] Physical signal sent by {corridorId}_{poleId}." +
+                  $" State: {_state}.");
 
         if (_state == State.Transiting && corridorId == _expData.transitCorridorId)
         {
@@ -254,19 +257,19 @@ namespace script.avatar.ExplorationHelpers
     public void DoBacktrack(string targetNode, GraphNode targetData)
     {
         if (targetNode == null) { return; }
-
+        _backtrackTimer = 0f;
+        
         // If the target is a corridor pole, skip the physical movement.
         if (targetNode.EndsWith("_A") || targetNode.EndsWith("_B"))
         {
-            _backtrackTimer = 0f;
             _expData.currentNodeId  = targetNode;
-            Debug.Log($"[StateMachine] Backtrack pointing to corridor node '{targetNode}' — Skip physical movement.");
+            Debug.Log($"[StateMachine] Backtrack pointing to corridor node '{targetNode}' — " +
+                      $"Skip physical movement.");
             _state = State.Idle;
             OnNextActionNeeded?.Invoke();
             return;
         }
 
-        _backtrackTimer = 0f;
         _expNav.BacktrackToNode(targetData.position);
         _state = State.Backtracking;
     }

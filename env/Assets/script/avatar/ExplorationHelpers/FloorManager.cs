@@ -119,7 +119,9 @@ namespace script.avatar.ExplorationHelpers
 
                 if (fromGraph != null && fromGraph.GetNode(connectorId) == null)
                 {
-                    _graphConstruction.AddNodeToFromGraph(fromGraph, connectorId, connPosHere);
+                    _graphConstruction.AddRoomNodeToGraph(connectorId,
+                        connPosHere, 
+                        true, fromGraph);
                 }
 
             
@@ -129,7 +131,7 @@ namespace script.avatar.ExplorationHelpers
                 StartCoroutine(_expNav.TraverseStairsThen(targetFloor));
         }
 
-        private bool HandleNextFloorArrival(string connNodeId, int targetFloor)
+        private bool ArrivesInFloor(string connNodeId, int targetFloor)
         {
             var floorData = _expData.buildingGraph?.GetFloor(targetFloor);
             if (floorData != null)
@@ -142,7 +144,7 @@ namespace script.avatar.ExplorationHelpers
                 }
                 if (!string.IsNullOrEmpty(connNodeId))
                 {
-                    if (_corridorManager.ArrivedInCorridor()) return true;
+                    if (_corridorManager.ArrivesInCorridor()) return true;
 
                     (string adjRoom, string adjDoorName, Vector3 adjPos) = 
                         _roomHelper.FindAdjacentRoom(connNodeId, targetFloor);
@@ -192,7 +194,7 @@ namespace script.avatar.ExplorationHelpers
             _expData.registeredTransitDoors.Clear();
             _expData.allCorridorDoors.Clear();
 
-            if (HandleNextFloorArrival(connNodeId, targetFloor)) return;
+            if (ArrivesInFloor(connNodeId, targetFloor)) return;
 
             _expData.inRoomMode             = false;
             _expData.movingToPoleCorridorId = null;
@@ -201,13 +203,12 @@ namespace script.avatar.ExplorationHelpers
             CorridorData spawnCorridor = ExplorationUtils.FindCorridorContainingPosition(
                 _expNav.AgentPosition,
                 3f);
-            if (spawnCorridor == null) {
+            if (!spawnCorridor) {
                 OnNewFloorRoomOrExploredCorridor?.Invoke(true);
                 return;
             }
 
-            var poleANode = _graphConstruction.GetCorridorPoleNode($"{spawnCorridor.corridorId}_A");
-            bool alreadyDone = CorridorManager.HasCorridorAlreadyBeenExplored(poleANode, spawnCorridor);
+            bool alreadyDone = _graphConstruction.GraphReader.HasCorridorAlreadyBeenExplored(spawnCorridor.corridorId);
         
             if (alreadyDone)
             {
@@ -217,7 +218,7 @@ namespace script.avatar.ExplorationHelpers
             else
             {
                 Debug.Log($"[FloorMgr] Spawned in corridor '{spawnCorridor.corridorId}' — starting corridor mode.");
-                _expNav.BeginMovingToPole1(spawnCorridor, false);
+                _expNav.BeginMovingToFirstPole(spawnCorridor, false);
                 _stateMachine.SetState(State.MovingToPole);
             }
         
@@ -250,14 +251,85 @@ namespace script.avatar.ExplorationHelpers
         
             // Looks for adjacent unexplored floors, if one of them exists, starts the exploration on that floor.
             if (_stateMachine.TransitionWithCondition(State.MovingToConnector,
-                    () => _expNav.FindAndExploreAdjacentFloors(unexplored))) return;
+                    () => FindAndExploreAdjacentFloors(unexplored))) return;
             
             // No direct connector -> look for a connector that connects another floor to the unexplored floor.
             if (_stateMachine.TransitionWithCondition(State.MovingToConnector,
-                    () => _expNav.FindAndExploreOtherFloors(unexplored))) return;
+                    () => FindAndExploreOtherFloors(unexplored))) return;
 
             Debug.Log("[FloorMgr] All floors explored (unless unreachable).");
             OnAllFloorsCompleted?.Invoke();
+        }
+
+        private bool FindAndExploreAdjacentFloors(List<FloorNode> unexplored)
+        {
+            unexplored.Sort((a, b) =>
+                Mathf.Abs(a.floorIndex - _expData.currentFloor)
+                    .CompareTo(Mathf.Abs(b.floorIndex - _expData.currentFloor)));
+
+            foreach (var targetFloor in unexplored)
+            {
+                var connectors = _expData.buildingGraph.GetConnectors(
+                    _expData.currentFloor, 
+                    targetFloor.floorIndex
+                );
+                connectors.RemoveAll(c => _expData.traversedConnectors.Contains(c.id));
+                if (connectors.Count == 0) continue;
+
+                connectors.Sort((a, b) => a.costUp.CompareTo(b.costUp));
+                _expData.pendingConnector = connectors[0];
+
+                _expNav.MoveToNextFloor();
+                Debug.Log($"[FloorMgr] Moving from floor {_expData.currentFloor} to floor {targetFloor.floorIndex} " +
+                          $"through connector '{_expData.pendingConnector.id}'");
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool FindAndExploreOtherFloors(List<FloorNode> unexplored)
+        {
+            Debug.Log($"[FloorMgr] No connector connected from {_expData.currentFloor} to an unexplored floor. " +
+                      $"Looking for an indirect path...");
+
+            unexplored.Sort((a, b) => a.floorIndex.CompareTo(b.floorIndex));
+
+            // Get already visited floors and order them by distance
+            var visitedFloors = new List<int>(_expData.floorGraphs.Keys);
+            visitedFloors.Sort((a, b) =>
+                Mathf.Abs(a - _expData.currentFloor).CompareTo(Mathf.Abs(b - _expData.currentFloor)));
+
+            foreach (var targetFloor in unexplored)
+            {
+                foreach (int midFloor in visitedFloors)
+                {
+                    if (midFloor == _expData.currentFloor) continue;
+
+                    // The middle floor must have a non-traversed connector linked to the unexplored floor
+                    var connToTarget = 
+                        _expData.buildingGraph.GetConnectors(midFloor, targetFloor.floorIndex);
+                    connToTarget.RemoveAll(c => _expData.traversedConnectors.Contains(c.id));
+                    if (connToTarget.Count == 0) continue;
+
+                    // Look for the connector between currentFloor and midFloor
+                    var connToMid = 
+                        _expData.buildingGraph.GetConnectors(_expData.currentFloor, midFloor);
+                    if (connToMid.Count == 0) continue;
+
+                    connToMid.Sort((a, b) => a.costUp.CompareTo(b.costUp));
+                    _expData.pendingConnector = connToMid[0];
+
+                    _expNav.MoveToNextFloor();
+
+                    Debug.Log("[FloorMgr] Indirect path: " +
+                              $"moving from floor {_expData.currentFloor} to floor {midFloor} " +
+                              $" and floor {targetFloor.floorIndex} through '{_expData.pendingConnector.id}'.");
+                    return true;
+                }
+            }
+
+            return false;
         }
         
         private void NavigateToUnexploredUnit(FloorNode floorData)
@@ -268,7 +340,9 @@ namespace script.avatar.ExplorationHelpers
                 {
                     var roomObj = ExplorationUtils.FindRoom(roomId, floorData);
                 
-                    if (_graphConstruction.CheckForRoomExistenceAndStatus(roomId, roomObj, _roomHelper)) continue;
+                    // Skip if the physical door towards this room has already been explored.
+                    string doorId = _roomHelper.FindDoorBetweenNodes(_expData.currentNodeId, roomId);
+                    if (_graphConstruction.CheckForRoomExistenceAndStatus(roomId, roomObj, doorId)) continue;
                 
                     // If the target is a corridor, handle the movement differently and return
                     if (_corridorManager.IsMovingToCorridor(roomId)) return;
@@ -284,15 +358,15 @@ namespace script.avatar.ExplorationHelpers
                 }
             }
 
-            string targetId = _graphConstruction.FindNearestNodeWithDiscoveredEdges(transform.position);
+            string targetId = _graphConstruction.GraphReader.FindNearestNodeWithDiscoveredEdges(transform.position);
             if (targetId == null) { OnAllFloorsCompleted?.Invoke(); return; }
 
-            _expNav.SetDestination(_graphConstruction.GetNode(targetId).position);
+            _expNav.SetDestination(_graphConstruction.GraphReader.GetNodePosition(targetId));
             _expData.currentNodeId = targetId;
             _stateMachine.SetState(State.Backtracking);
         }
-        
-        public string FindNextNodeId(DoorVarcoScript doorScript, GraphEdge edge)
+
+        private string FindNextNodeId(DoorVarcoScript doorScript, GraphEdge edge)
         {
             string newNodeId;
             if (doorScript && (edge.id.StartsWith("bw_") || edge.id.StartsWith("fw_")))
@@ -335,7 +409,7 @@ namespace script.avatar.ExplorationHelpers
         
             if (doorScript && IsConnectorDoor(doorScript.gameObject.name))
             {
-                _graphConstruction.RegisterConnectorDoor(doorScript, edge, newNodeId, this);
+                RegisterConnectorDoor(doorScript, edge, newNodeId);
                 OnNextActionNeeded?.Invoke();
                 return;
             }
@@ -354,13 +428,9 @@ namespace script.avatar.ExplorationHelpers
         
         private bool HasEdgeAlreadyBeenExplored(string newNodeId, bool isTargetCorridor, GraphEdge edge)
         {
-            if (_graphConstruction.IsNodePhysicallyVisited(newNodeId, out var existingNode)
-                && !existingNode.HasUnexploredEdges() 
-                && !isTargetCorridor)
+            if (_graphConstruction.TryToMarkEdgeExplored(newNodeId, edge, isTargetCorridor))
             {
                 Debug.LogWarning($"[FloorMgr] LOOP AVOIDED: '{newNodeId}' already fully explored.");
-                _graphConstruction.MarkGraphEdgeExplored(edge, newNodeId);
-                _graphConstruction.SyncTwinCorridorEdge(edge.id, newNodeId);
                 _expData.currentEdge = null;
                 OnNextActionNeeded?.Invoke();
                 return true;
@@ -371,7 +441,7 @@ namespace script.avatar.ExplorationHelpers
 
             if (isTargetCorridor)
             {
-                return _corridorManager.SetIdleIfCorridorIsNotExplored(edge, newNodeId);
+                return _corridorManager.IsCorridorExploredAndSetIdle(edge, newNodeId);
             }
             var floorData2 = _expData.buildingGraph?.GetFloor(_expData.currentFloor);
             var roomObj2   = ExplorationUtils.FindRoom(newNodeId, floorData2);
@@ -389,7 +459,7 @@ namespace script.avatar.ExplorationHelpers
         {
             ExplorationNavigation.OpenDoor(door);
         
-            _graphConstruction.AddConnectorNodeAndEdgeAndMarkExplored(connectorForDoor, door);
+            _graphConstruction.AddConnectorAndMarkExplored(connectorForDoor, door);
         }
         
         public void RegisterDiscoveredObject(string artifactId, string roomId,
@@ -413,6 +483,28 @@ namespace script.avatar.ExplorationHelpers
             if (!_expData.roomArtifacts.ContainsKey(roomId))
                 _expData.roomArtifacts[roomId] = new HashSet<string>();
             _expData.roomArtifacts[roomId].Add(artifactId);
+        }
+        
+        private void RegisterConnectorDoor(
+            DoorVarcoScript doorScript, 
+            GraphEdge edge, 
+            string newNodeId)
+        {
+            var connector = FindConnectorForDoor(doorScript.gameObject.name);
+            if (connector != null) newNodeId = connector.id;
+
+            if (newNodeId == _expData.currentNodeId)
+            {
+                string beyond = doorScript.GetRoomNameBeyondDoor(transform.position);
+                if (!string.IsNullOrEmpty(beyond) && beyond != _expData.currentNodeId)
+                    newNodeId = beyond;
+            }
+
+            _graphConstruction.CreateNodeIfNotExists(newNodeId, edge);
+            _graphConstruction.MarkGraphEdgeExplored(edge, newNodeId);
+            _graphConstruction.SyncTwinCorridorEdge(edge.id, newNodeId);
+
+            _expData.currentEdge = null;
         }
     }
 }

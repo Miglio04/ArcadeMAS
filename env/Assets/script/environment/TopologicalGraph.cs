@@ -1,4 +1,5 @@
 using System.Collections.Generic;using System.Collections.Generic;using System.Collections.Generic;
+using script.environment;
 using UnityEngine;
 
 // ============================================================
@@ -133,7 +134,7 @@ public class GraphEdge
 // ─────────────────────────────────────────────────────────────
 // GRAFO
 // ─────────────────────────────────────────────────────────────
-public class TopologicalGraph
+public class TopologicalGraph : IGraphReader
 {
     private Dictionary<string, GraphNode> nodes = new Dictionary<string, GraphNode>();
     private Stack<string> explorationStack       = new Stack<string>();
@@ -642,11 +643,69 @@ public class TopologicalGraph
         return nearest;
     }
 
+    public bool HasUnexploredDoors(string nodeId)
+    {
+        return !IsNodeNull(nodeId) && GetNode(nodeId).edges.Exists(e => e != null &&
+                                                                 e.state != EdgeState.Explored &&
+                                                                 e.edgeType == EdgeType.Door);
+    }
+
     public bool IsFullyExplored()
     {
         foreach (var node in nodes.Values)
             if (node != null && node.HasUnexploredEdges()) return false;
         return true;
+    }
+    
+    public Vector3 GetNodePosition(string nodeId) => GetNode(nodeId).position;
+
+    public bool IsNodeOfType(string nodeId, NodeType nodeType)
+    {
+        var node = GetNode(nodeId);
+        return node != null && node.type == nodeType;
+    }
+
+    public bool IsNodePhysicallyVisited(string nodeId)
+    {
+        GraphNode node = GetNode(nodeId);
+        return node is { physicallyVisited: true };
+    }
+
+    public bool IsNodeNull(string nodeId)
+    {
+        GraphNode node = GetNode(nodeId);
+        return node == null;
+    }
+    
+    public bool HasCorridorAlreadyBeenExplored(string corridorId) =>
+        GetCorridorPoleNode($"{corridorId}_A")?.edges
+            ?.Exists(e => e?.id == $"central_{corridorId}" && e.state == EdgeState.Explored) ?? false;
+        
+    public bool HasUnexploredEdges(string nodeId) => nodeId != null && GetNode(nodeId).HasUnexploredEdges();
+    
+    public bool HasRoomAlreadyBeenExplored(string currentRoomId, string roomId, string doorId)
+    {
+        if (string.IsNullOrEmpty(doorId)) return HasCorridorAlreadyBeenExplored(roomId);
+        var currNode = GetNode(currentRoomId);
+        if (currNode != null && currNode.edges.Exists(e =>
+                e?.id == doorId && e.state == EdgeState.Explored))
+            return true;
+
+        return HasCorridorAlreadyBeenExplored(roomId);
+    }
+    
+    public string NearestPoleNode(string corridorId, Vector3 pos)
+    {
+        string best = null;
+        float bestDist = float.MaxValue;
+        foreach (string id in new[] { $"{corridorId}_A", $"{corridorId}_B" })
+        {
+            var node = GetNode(id);
+            if (node == null) continue;
+            float d = Vector3.Distance(pos, node.position);
+            if (d < bestDist) { bestDist = d; best = id; }
+        }
+        return best;
     }
 
     public bool IsCorridorFullyTransited(string corridorId)

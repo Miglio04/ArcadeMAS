@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace script.avatar.ExplorationHelpers
 {
@@ -87,7 +85,7 @@ namespace script.avatar.ExplorationHelpers
                 if (!string.IsNullOrEmpty(corridorBeyond) 
                     && ExplorationUtils.FindCorridorData(corridorBeyond) != null)
                 {
-                    _graphConstruction.AddEdgeToUnexploredCorridor(door, corridorBeyond);
+                    _graphConstruction.AddNewEdgeAndMarkExplored(door, corridorBeyond, false);
                 }
                 else
                 {
@@ -149,7 +147,7 @@ namespace script.avatar.ExplorationHelpers
             _expData.registeredRoomDoors[door.gameObject.name] = _expData.currentNodeId;
             door.discovered = true;
 
-            if (_graphConstruction.IsNodeOfType(_expData.currentNodeId, NodeType.CorridorPoleB))
+            if (_graphConstruction.GraphReader.IsNodeOfType(_expData.currentNodeId, NodeType.CorridorPoleB))
             {
                 Debug.Log("[DoorHandler] Node is second pole of corridor.");
                 HandleCorridorDoor(door);
@@ -171,8 +169,8 @@ namespace script.avatar.ExplorationHelpers
 
             string toNodeId = leadsToCorridor ? roomBeyond : null;
             if (!string.IsNullOrEmpty(toNodeId) &&
-                _graphConstruction.IsNodePhysicallyVisited(toNodeId, out var targetNode) &&
-                !targetNode.HasUnexploredEdges())
+                _graphConstruction.GraphReader.IsNodePhysicallyVisited(toNodeId) &&
+                !_graphConstruction.GraphReader.HasUnexploredEdges(toNodeId))
             {
                 return;
             }

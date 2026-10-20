@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using script.avatar.ExplorationHelpers;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
+using State = script.avatar.ExplorationHelpers.State;
+using StateMachine = script.avatar.ExplorationHelpers.StateMachine;
 
 namespace script.avatar
 {
@@ -35,15 +37,10 @@ namespace script.avatar
     public class ExplorationManager : MonoBehaviour
     {
         private bool _explorationStarted = false;
-        
         private ExplorationData _expData;
-
         private StateMachine _stateMachine;
-
         private GraphConstruction _graphConstruction;
-
         private ExplorationNavigation _expNav;
-
         private FloorManager _floorManager;
         private CorridorManager _corridorManager;
         private RoomHelper _roomHelper;
@@ -207,7 +204,7 @@ namespace script.avatar
             _explorationStarted = true;
      
 
-            Debug.Log($"[ExplMgr] Starting floor: {_expData.currentFloor}");
+            Debug.Log($"[ExplMgr] Starting floor: {_expData.currentFloor}.");
             
             _expData.floorGraphs[_expData.currentFloor] = new TopologicalGraph();
      
@@ -229,7 +226,7 @@ namespace script.avatar
                 StartRotating360(isRoom: true);
             }
 
-            Debug.Log($"[ExplMgr] Got here from '{startNodeId}' floor {_expData.currentFloor}");
+            Debug.Log($"[ExplMgr] Got here from '{startNodeId}' floor {_expData.currentFloor}.");
         }
 
         private void StartRotating360(bool isRoom)
@@ -256,10 +253,7 @@ namespace script.avatar
 
             if (_expData.inRoomMode && !string.IsNullOrEmpty(_expData.currentNodeId))
             {
-                bool hasUnexploredDoors = !_graphConstruction.IsNodeNull(_expData.currentNodeId, out var currentNode) &&
-                                          currentNode.edges.Exists(e => e != null &&
-                                                                        e.state != EdgeState.Explored &&
-                                                                        e.edgeType == EdgeType.Door);
+                bool hasUnexploredDoors = _graphConstruction.GraphReader.HasUnexploredDoors(_expData.currentNodeId);
                 if (!hasUnexploredDoors)
                     _roomHelper.ScanRoomDoorsFromScript(_expData.currentNodeId, _floorManager);
             }
@@ -270,12 +264,12 @@ namespace script.avatar
             if (string.IsNullOrEmpty(_expData.currentNodeId)) return;
 
             GraphEdge nextEdge = _graphConstruction.RetrieveNextEdgeToInspect();
-
+            
             if (nextEdge != null)
             {
                 _expNav.MoveToNextEdge(nextEdge);
                 _stateMachine.SetState(State.MovingToDoor);
-                Debug.Log($"[ExplMgr] Next door: {nextEdge.id} navDist={nextEdge.navMeshDist:F1}");
+                Debug.Log($"[ExplMgr] Next door: {nextEdge.id} navDist={nextEdge.navMeshDist:F1}.");
             }
             else
             {
@@ -331,7 +325,7 @@ namespace script.avatar
             loc?.ForceCurrentRoomAndSend(ExplorationUtils.NormalizeRoomId(_expData.currentNodeId));
             Debug.Log($"[ExplMgr] Building '{_expData.buildingId}' explored. " +
                       $"Floors: {_expData.floorGraphs.Count}  Links: {_expData.ConnectorLinks.Count}  " +
-                      $"Distances: {roomPairs.Count}  Snapshot saved: {saved}");
+                      $"Distances: {roomPairs.Count}  Snapshot saved: {saved}.");
         }
     }
 }

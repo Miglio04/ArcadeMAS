@@ -46,8 +46,8 @@ namespace script.avatar.ExplorationHelpers
             var otherCorrDataCheck = ExplorationUtils.FindCorridorData(otherCorrId);
             if (!otherCorrDataCheck) return null;
         
-            if (_graphConstruction.IsNodeNull($"{otherCorrId}_A", out _) &&
-                _graphConstruction.IsNodeNull($"{otherCorrId}_B", out _)) return null; // not discovered yet
+            if (_graphConstruction.GraphReader.IsNodeNull($"{otherCorrId}_A") &&
+                _graphConstruction.GraphReader.IsNodeNull($"{otherCorrId}_B")) return null; // not discovered yet
             return otherCorrId;
         }
 
@@ -61,10 +61,8 @@ namespace script.avatar.ExplorationHelpers
                 return;
             }
             
-            var poleANode = _graphConstruction.GetCorridorPoleNode($"{corridorId}_A");
             // Even if the corridor has been explored, some doors might not be
-            if (poleANode != null 
-                && !_graphConstruction.HandlePoleInAlreadyExploredCorridor(poleANode, corridorId, poleId))
+            if (!_graphConstruction.TryToAddEdgeToExploredCorridor($"{corridorId}_A", corridorId, poleId))
                 return;
             // Clean target if the intended corridor gets reached
             _expData.idleTargetCorridorId = null;
@@ -155,7 +153,7 @@ namespace script.avatar.ExplorationHelpers
 
             _expData.transitCorridorId = _expData.pendingCorridorId;
             _expData.registeredTransitDoors.Clear();
-            _expNav.BeginTransitingToB(_expData.poleAPos, _expData.poleBPos);
+            _expNav.BeginTransitingToSecondPole(_expData.poleBPos);
             _expData.explorationVisionCone?.StartTransitScan(
                 _expData.poleAPos, 
                 _expData.poleBPos,
@@ -186,7 +184,7 @@ namespace script.avatar.ExplorationHelpers
         
         private bool HasCorridorBeenTransited(string newNodeId)
         {
-            if (_graphConstruction.IsCorridorFullyTransited(newNodeId))
+            if (_graphConstruction.GraphReader.IsCorridorFullyTransited(newNodeId))
             {
                 Debug.LogWarning($"[CorrMgr] Corridor '{newNodeId}' already transited.");
                 _expData.currentEdge = null;
@@ -194,19 +192,15 @@ namespace script.avatar.ExplorationHelpers
                 return true;
             }
             // Also check if the corridor has already been physically visited and is without pending doors
-            if (!_graphConstruction.IsNodePhysicallyVisited($"{newNodeId}_B", out var targetCorridorNode)
-                || targetCorridorNode.HasUnexploredEdges()) return false;
+            if (!_graphConstruction.GraphReader.IsNodePhysicallyVisited($"{newNodeId}_B")
+                || _graphConstruction.GraphReader.HasUnexploredEdges($"{newNodeId}_B")) return false;
             Debug.LogWarning($"[CorrMgr] Corridor '{newNodeId}' already completed.");
             _expData.currentEdge = null;
             OnNextActionNeeded?.Invoke();
             return true;
         }
-        
-        public static bool HasCorridorAlreadyBeenExplored(CorridorPoleNode poleANode, CorridorData spawnCorridor) =>
-            poleANode != null &&
-            poleANode.edges.Exists(e => e?.id == $"central_{spawnCorridor.corridorId}"
-                                        && e.state == EdgeState.Explored);
 
+            
         public bool IsMovingToCorridor(string roomId)
         {
             var corridorData = ExplorationUtils.FindCorridorData(roomId);
@@ -234,14 +228,9 @@ namespace script.avatar.ExplorationHelpers
             return false;
         }
 
-        public bool SetIdleIfCorridorIsNotExplored(GraphEdge edge, string newNodeId)
+        public bool IsCorridorExploredAndSetIdle(GraphEdge edge, string newNodeId)
         {
-            if (!_graphConstruction.IsNodeNull(_expData.currentNodeId, out var currentNode))
-            {
-                currentNode.edges.RemoveAll(e =>
-                    e is { edgeType: EdgeType.Door } &&
-                    e.toNodeId == edge.toNodeId);
-            }
+            _graphConstruction.RemoveEdgesToNode(edge);
 
             if (HasCorridorBeenTransited(newNodeId)) return true;
             
@@ -250,14 +239,14 @@ namespace script.avatar.ExplorationHelpers
             return false;
         }
 
-        public bool ArrivedInCorridor()
+        public bool ArrivesInCorridor()
         {
             CorridorData exitCorridor = ExplorationUtils.FindCorridorContainingPosition(
                 _expNav.AgentPosition,
                 3f);
             if (exitCorridor != null)
             { 
-                _expNav.BeginMovingToPole1(exitCorridor, true);
+                _expNav.BeginMovingToFirstPole(exitCorridor, true);
                 _stateMachine.SetState(State.MovingToPole);
                 return true;
             }
@@ -267,7 +256,7 @@ namespace script.avatar.ExplorationHelpers
 
         private void ScanCorridorDoorsFromScript(string corridorId)
         {
-            Debug.Log("[CorrMgr] Scanning corridor: " + corridorId);
+            Debug.Log("[CorrMgr] Scanning corridor: " + corridorId + ".");
             foreach (var door in FindObjectsByType<DoorVarcoScript>(FindObjectsSortMode.None))
             {
                 if (!ExplorationUtils.IsDoorConnectedToRoom(
@@ -277,7 +266,7 @@ namespace script.avatar.ExplorationHelpers
                         out var backName))
                     continue;
                 
-                Debug.Log($"[CorrMgr] Door {door.name} is connected to {corridorId}");
+                Debug.Log($"[CorrMgr] Door {door.name} is connected to {corridorId}.");
 
                 if (IsCorridorDoorAlreadyRegistered(door))
                 {

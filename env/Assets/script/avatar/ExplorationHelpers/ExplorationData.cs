@@ -52,8 +52,6 @@ namespace script.avatar.ExplorationHelpers
         [NonSerialized] public string currentNodeId;
         [NonSerialized] public bool inRoomMode = false;
         
-        public string CurrentNodeId => currentNodeId;
-
         [NonSerialized] public string transitCorridorId;
         [NonSerialized] public Vector3 poleAPos;
         [NonSerialized] public Vector3 poleBPos;
