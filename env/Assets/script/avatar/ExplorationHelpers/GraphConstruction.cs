@@ -192,7 +192,7 @@ namespace script.avatar.ExplorationHelpers
         
         
 
-        public void AddSegmentToCorridor(string corridorId, Vector3 doorPos, string poleAId, string poleBId)
+        public void AddSegmentToCorridor(string corridorId, Vector3 doorPos, string doorName, string poleAId, string poleBId)
         {
             string fromNode = Graph.NearestPoleNode(corridorId, doorPos);
             Debug.Assert(!string.IsNullOrEmpty(fromNode), 
@@ -209,7 +209,7 @@ namespace script.avatar.ExplorationHelpers
                 ? distFromDoor + distDoorTo
                 : Vector3.Distance(fromPos, toPos);
 
-            Graph.AddSegmentArc(fromNode, toNode, dist, _expData.lastCorridorLinkDoorName, doorPos);
+            Graph.AddSegmentArc(fromNode, toNode, dist, doorName, doorPos);
         }
 
         public void AddEdgesToCorridorDoor(string corridorId, DoorVarcoScript door, string frontName, string backName)

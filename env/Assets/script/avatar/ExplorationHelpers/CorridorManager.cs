@@ -129,6 +129,7 @@ namespace script.avatar.ExplorationHelpers
                     _graphConstruction.AddSegmentToCorridor(
                         comingCorridor,
                         linkDoor.transform.position,
+                        _expData.lastCorridorLinkDoorName,
                         poleAId,
                         $"{_expData.pendingCorridorId}_B");
                 }
@@ -143,9 +144,11 @@ namespace script.avatar.ExplorationHelpers
             { 
                 string otherCorrId = GetOtherCorridorIdIfDoorMatchesCorridorCriteria(door);
 
-                if (otherCorrId != null) _graphConstruction.AddSegmentToCorridor(
-                    otherCorrId, 
-                    door.transform.position, 
+                if (otherCorrId != null)
+                    _graphConstruction.AddSegmentToCorridor(
+                    otherCorrId,
+                    door.transform.position,
+                    door.name,
                     newCorrA, 
                     newCorrB);
            
