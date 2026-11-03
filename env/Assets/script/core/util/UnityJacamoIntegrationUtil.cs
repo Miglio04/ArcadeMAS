@@ -5,7 +5,6 @@ using UnityEngine;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Newtonsoft.Json;
 using Unity.VisualScripting;
 using System.Runtime.InteropServices;
@@ -248,7 +247,7 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 		await Task.WhenAll(tasks);
 	}
 
-	public static string CreateAndConvertJacamoMessageIntoJsonString(string messageType, string messagePayload, string agentEvent, string agentName, object param)
+	public static string CreateAndConvertJacamoMessageIntoJsonString(string messageType, string messagePayload, string agentEvent, string agentName, object param, object param2 = null)
 	{
 		// In sight: messagePayload is null. agentName is null. Param può essere o la stringa del nome o una struttura
 	 // artifactInfo.
@@ -288,7 +287,10 @@ class UnityJacamoIntegrationUtil : MonoBehaviour
 				break;
 
 			case "artifactStrategy":
-				ArtsData artsData = new ArtsData( (string[]) param );
+				ArtsData artsData = null;
+				artsData = param2 == null ? 
+					new ArtsData( (string[]) param) :
+					new ArtsData( (string[]) param, (string[]) param2);
 				
 				wsMsg = new BrainMessage( "body", agentName, "arts_info", artsData );
 				break;

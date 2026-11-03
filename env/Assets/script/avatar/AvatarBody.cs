@@ -8,14 +8,14 @@ public class AvatarBody : MonoBehaviour
 {
     NavMeshAgent agent;
     GameObject root;
-    ShopperAvatarScript mainAvatarScript;
+    AgentAvatarSocial mainAvatarScript;
     string artifactReached = "";
 
     // Start is called before the first frame update
     void Awake()
     {
         root = transform.parent.gameObject;
-        mainAvatarScript = root.GetComponent<ShopperAvatarScript>();
+        mainAvatarScript = root.GetComponent<AgentAvatarSocial>();
 
         agent = GetComponent<NavMeshAgent>();
     }

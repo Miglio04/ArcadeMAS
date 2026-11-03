@@ -13,6 +13,7 @@ public abstract class AgentAvatar : AbstractMasElement
     public AgentBeliefs agentBeliefs;
     public GameObject[] focusedArtifacts;
     public List<GoalEnum> goals;
+    public MovementModel movementModel;
     protected TextMeshPro nameTextMeshPro;
     protected NavMeshAgent agent;
     
@@ -25,6 +26,7 @@ public abstract class AgentAvatar : AbstractMasElement
         // Find the TextMeshPro component in the children of the avatar
         nameTextMeshPro = GetComponentInChildren<TextMeshPro>();
         agent = GetComponent<NavMeshAgent>();
+        movementModel = GetComponent<MovementModel>();
 
         // Check if we found the TextMeshPro component
         if (nameTextMeshPro != null)
@@ -44,7 +46,7 @@ public abstract class AgentAvatar : AbstractMasElement
 
         messageHandlersWithMessage = new Dictionary<string, Action<WsMessage>>
         {
-            { MessageTypes.Walk, HandleAgentWalk }
+            { MessageTypes.Walk, message => movementModel.HandleWalkMessage(message) }
         };
     }
     
@@ -109,27 +111,6 @@ public abstract class AgentAvatar : AbstractMasElement
 
     public string JaCaMoAgentClassPath { get; set; }
 
-    protected void ReachDestination(string dest)
-    {
-        agent.isStopped = false;
-
-
-        var destObject = GameObject.Find(dest);
-        if (destObject == null)
-        {
-            Debug.LogError($"Destination is null.");
-            return;
-        }
-        var child = destObject.transform.Find("AnchorPoint");
-        if (child == null)
-        {
-            Debug.LogError($"AnchorPoint not found in {destObject.name}");
-            return;
-        }
-
-        agent.SetDestination(child.transform.position);
-    }
-
     public void SendMessageToJaCaMoBrain( string message )
     {
         wsChannel.sendMessage(message);
@@ -171,14 +152,5 @@ public abstract class AgentAvatar : AbstractMasElement
         print("Connection established for " + objInUse.name);
     }
 
-    private void HandleAgentWalk(WsMessage message)
-    {
-        print("Agent needs to reach destination.");
-        // Avatar receives the type of artifact to reach
-        var walkData = message.Data.ToObject<WalkData>();
-        UnityMainThreadDispatcher.Instance().Enqueue(() =>
-        {
-            ReachDestination( walkData.Target );
-        });
-    }
+    public bool IsAgentFriend(string agentName) => AgentBeliefs != null && AgentBeliefs.Friends.Contains(agentName);
 }

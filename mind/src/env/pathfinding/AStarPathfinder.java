@@ -141,6 +141,10 @@ public class AStarPathfinder {
     // Algoritmo A*
     // -----------------------------------------------------------------------
 
+    private boolean isCorridor(String nodeId){
+        return nodes.containsKey(nodeId + "_A") && nodes.containsKey(nodeId + "_B");
+    }
+
     /**
      * Calcola il cammino minimo da start a goal usando A*.
      *
@@ -150,6 +154,12 @@ public class AStarPathfinder {
      *         oppure lista vuota se non esiste un percorso
      */
     public List<String> computePath(String startId, String goalId) {
+        if(isCorridor(startId) && !startId.substring(startId.length()-2).equals("_A"))
+            return computePath(startId + "_A", goalId);
+
+        if(isCorridor(goalId) && !startId.substring(goalId.length()-2).equals("_A"))
+            return computePath(startId, goalId + "_A");
+
         if (!nodes.containsKey(startId) || !nodes.containsKey(goalId)) {
             System.out.println("[A*] Nodo non trovato: " + startId + " → " + goalId);
             return Collections.emptyList();

@@ -31,7 +31,8 @@ public class EnvManagerArtifact extends AbstractMasElementArtifact {
     // Nel .jcm: artifact envManager: artifact.EnvManagerArtifact("envManager")
     // -------------------------------------------------------------------
   @OPERATION
-    protected void init(String artifactName) {
+    protected void init(String artifactName, int port) {
+        super.init(artifactName, port);
         defineObsProperty("graphReady", false);
         System.out.println("[envManager] inizializzato.");
         if (loadFromDisk()) {
@@ -117,9 +118,17 @@ public class EnvManagerArtifact extends AbstractMasElementArtifact {
                     .stream()
                     .map(Object::toString)
                     .toList();
-
+            JSONArray artifactRoomsArray = messageJson.getJSONObject("data").optJSONArray("RoomNodes");
+            List<String> artifactRooms = null;
+            if(artifactRoomsArray != null)
+                artifactRooms = artifactRoomsArray
+                        .toList()
+                        .stream()
+                        .map(Object::toString)
+                        .toList();
             // Signal the agent that requested the artifact
-            execInternalOp("signalAgent", receiver, "artifact_names", artifactNames.toArray());
+            execInternalOp("signalAgent", receiver, "artifact_names",
+                    new Object[] { artifactNames.toArray(), artifactRooms.toArray() });
         }catch (Exception e){
             e.printStackTrace();
         }finally {

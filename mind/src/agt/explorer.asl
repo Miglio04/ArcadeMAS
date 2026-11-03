@@ -2,8 +2,8 @@
 // explorer.asl
 // ============================================================
 
-// include base for plans that are shared between agents
-{ include("topologicalNavigationBase.asl") }
+{ include("libraryPlans.asl") }
+{ include("initialGoalsPlan.asl") }
 
 name("explorer").
 
@@ -13,6 +13,12 @@ name("explorer").
     !ensure_env_manager;
     .print("[explorer] pronto, ricevo il grafo da Unity...").
 
++!ensure_env_manager <-
+    joinWorkspace("/main/main", _);
+    lookupArtifact("envManager", EnvId);
+    focus(EnvId);
+    +env_manager(EnvId);
+    .print("[explorer] envManager agganciato: ", EnvId).
 
 // ── Helper: awaits for the envManager if it's not available yet ───────────
 +!get_env(E) : env_manager(E).
@@ -134,6 +140,17 @@ name("explorer").
 // If there is no target the agent continues what it was doing
 -!try_navigate <- .abolish(navigating).
 
+// If there is no artifact stop the agent when it arrives in the last room
++!final_approach(_, "") <- true.
+
++!final_approach(Room, Artifact) <-
+    !!reach_dest(Artifact);
+    -movement_in_progress(Artifact);
+    .abolish(at(_));
+    +at(Room);
+    .print("[explorer] arrivato a ", Artifact, ", stanza corrente: ", Room).
+
+
 // ── Creates door/passage artifacts ────────────────────────────────────────
 // Whether a door is a physical door or an open passage is decided by 
 // isPhysical, which arrives directly from a field in the Unity Inspector.
@@ -156,9 +173,6 @@ name("explorer").
         }
     }.
 
--!create_door_artifacts <-
-    .print("[explorer] Error in door/passage artifact creation").
-    
 // ── Navigates towards a room using A* ─────────────────────────────────────
 +!navigate_to(StartId, GoalId) <-
     .print("[explorer] Calcolo percorso: ", StartId, " → ", GoalId);
@@ -171,5 +185,25 @@ name("explorer").
         !follow_path(StepsToWalk);
         .print("[explorer] Percorso completato.")
     }.
+
+
+// node mid path
++!follow_path([Next | Rest]) : Rest \== [] <-
+    .print("[explorer] -> ", Next);
+    !!reach_dest(Next);
+    .wait({ +reached(place, Next) });
+    -movement_in_progress(Next);
+    .abolish(at(_)); +at(Next);
+    .print("[explorer] arrivato in: ", Next);
+    !follow_path(Rest).
+
+// last node
++!follow_path([Last]) <-
+    .print("[explorer] -> ", Last);
+    !!reach_dest(Last);
+    .wait({ +reached(place, Last) });
+    -movement_in_progress(Last);
+    .abolish(at(_)); +at(Last);
+    .print("[explorer] sei a destinazione: ", Last).
 
 +!follow_path([]).

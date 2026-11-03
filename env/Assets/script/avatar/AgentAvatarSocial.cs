@@ -9,7 +9,6 @@ using WebSocketSharp;
 
 public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
 {
-    protected MovementModel movementModel;
     protected AvatarAnimationController animationController;
     private Dictionary<string, Action> messageHandlers;
     private Dictionary<string, Action<WsMessage>> messageHandlersWithMessage;
@@ -29,19 +28,69 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
 
         messageHandlersWithMessage = new Dictionary<string, Action<WsMessage>>
         {
-            {MessageTypes.Walk,  HandleAgentWalk},
+            {MessageTypes.Walk,  message => movementModel.HandleWalkMessage(message)},
             {MessageTypes.Rotate, HandleAgentRotate},
             {MessageTypes.Say, HandleAgentSay},
             {MessageTypes.Grab, HandleAgentGrab},
             {MessageTypes.Release, HandleAgentRelease}
         };
 
+        EventSetup();
     }
 
-
-    protected void resetStoppingDistance()
+    protected void OnDestroy()
     {
-        agent.stoppingDistance = 1.0f;
+        EventDestroy();
+    }
+
+    protected virtual void EventSetup()
+    {
+        movementModel.OnWalkStarted += OnWalkStarted;
+        movementModel.OnWalkingTowardsFriendStarted += OnWalkingTowardsFriendStarted;
+        movementModel.OnWalkingTowardsNonFriendStarted += OnWalkingTowardsNonFriendStarted;
+        movementModel.OnTargetedWalkStarted += OnTargetedWalkStarted;
+        movementModel.OnRandomWalkStarted += OnRandomWalkStarted;
+        movementModel.OnDestinationReached += OnDestinationReached;
+    }
+
+    protected virtual void EventDestroy()
+    {
+        movementModel.OnWalkStarted -= OnWalkStarted;
+        movementModel.OnWalkingTowardsFriendStarted -= OnWalkingTowardsFriendStarted;
+        movementModel.OnWalkingTowardsNonFriendStarted -= OnWalkingTowardsNonFriendStarted;
+        movementModel.OnTargetedWalkStarted -= OnTargetedWalkStarted;
+        movementModel.OnRandomWalkStarted -= OnRandomWalkStarted;
+        movementModel.OnDestinationReached -= OnDestinationReached;
+    }
+
+    private void OnTargetedWalkStarted()
+    {
+        UnityMainThreadDispatcher.Instance().Enqueue(() => EnableDisableVisionCone(false));
+    }
+
+    private void OnWalkingTowardsFriendStarted(string target) => UnityMainThreadDispatcher.Instance().Enqueue(() =>
+        StartCoroutine(
+        WaitUntilReachedTarget(target, true)
+        ));
+    
+    private void OnWalkingTowardsNonFriendStarted(string target) => UnityMainThreadDispatcher.Instance().Enqueue(() =>
+        StartCoroutine(
+        WaitUntilReachedTarget(target)
+        ));
+
+    private void OnRandomWalkStarted()
+    {
+        StartCoroutine(ActivateVisionCone());
+        if (animationController != null)
+        {
+            animationController.SetAnimationState("walk"); // or "stop"
+        }
+    }
+
+    private void OnDestinationReached()
+    {
+        if (animationController != null)
+            animationController.SetAnimationState("stop");  
     }
     
     protected IEnumerator WaitUntilReachedTarget(string target, bool isFriend = false)
@@ -52,13 +101,6 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
             !agent.pathPending && agent.remainingDistance <= agent.stoppingDistance &&
             (!agent.hasPath || agent.velocity.sqrMagnitude == 0f)
         );
-        
-        // Searching for the target object with .Find is not efficient, it would be better to either
-        // pass the GameObject directly, cache it when setting the destination, or use tags.
-        // However, this should work for now.
-        var targetObj = GameObject.Find(target);
-        if (targetObj)
-            transform.LookAt(targetObj.transform);
         
         Debug.Log($"Agent has reached his {(isFriend ? "friend" : "target")}.");
         var messageType = isFriend ? "reached_friend" : "reached_destination";
@@ -100,33 +142,11 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
         }
         catch (Exception ex)
         {
-            print($"Error: {ex.Message}" );
-            print("Message could not be converted.");
+            Debug.LogError($"Error: {ex.Message}" );
+            Debug.LogError("Message could not be converted.");
         }
-    }
-
-    private void HandleAgentWalk(WsMessage message)
-    {
-        print("Agent needs to reach destination.");
-        // Avatar receives the type of artifact to reach
-        WalkData walkData = message.Data.ToObject<WalkData>();
-
-        if (walkData.Target == null) return;
-        
-        if (walkData.Target == "random")
-        {
-            UnityMainThreadDispatcher.Instance().Enqueue(HandleRandomWalk);
-            return;
-        }
-                    
-        UnityMainThreadDispatcher.Instance().Enqueue(() => { HandleTargetedWalk(walkData); });
     }
     
-    private void HandleAgentRotate(WsMessage message)
-    {
-        var rotateData = message.Data.ToObject<RotateData>();
-        HandleRotateMessage(rotateData);
-    }
 
     private void HandleAgentSay(WsMessage message)
     {
@@ -151,50 +171,6 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
             var snapPoint = GameObject.Find(releaseData.SnapPointName.Trim('"'));
             HandleArtifactRelease(artifact, snapPoint);
         });
-    }
-    
-    private void HandleTargetedWalk(WalkData walkData)
-    {
-        SetBaloonText("New destination: " + walkData.Target);
-        movementModel.IsStopped = true;
-        agent.ResetPath();
-        EnableDisableVisionCone(false);
-        ReachDestination(walkData.Target);
-        
-        // If the target is a friend, updates stoppoingDistance and uses the correct check
-        if (AgentBeliefs != null && AgentBeliefs.Friends.Contains(walkData.Target))
-        {
-            agent.stoppingDistance = 8.0f;
-            ReachDestination(walkData.Target);
-            
-                            
-            StartCoroutine(WaitUntilReachedTarget(walkData.Target, true));
-            if (Mathf.Approximately(agent.stoppingDistance, 8.0f)) //TODO: find correct distance or better solution
-            {
-                animationController.SetAnimationState("stop");
-            }
-        }
-        else
-        {
-            resetStoppingDistance(); // stoppingDistance = 1.0f
-            ReachDestination(walkData.Target);
-            StartCoroutine(WaitUntilReachedTarget(walkData.Target));
-        }
-    }
-
-    private void HandleRandomWalk()
-    {
-        resetStoppingDistance();
-        movementModel.IsStopped = false;
-        agent.ResetPath();
-        SetBaloonText("Walking");
-        movementModel.StartWalking();
-        StartCoroutine(ActivateVisionCone());
-                            
-        if (animationController != null)
-        {
-            animationController.SetAnimationState("walk"); // or "stop"
-        }
     }
 
     #region Handlers
@@ -222,8 +198,9 @@ public class AgentAvatarSocial : AgentAvatarWithEyesAndVoice
         });
     }
     
-    private void HandleRotateMessage(RotateData rotateData)
+    private void HandleAgentRotate(WsMessage message)
     {
+        var rotateData = message.Data.ToObject<RotateData>();
         if (rotateData.Type == "lookat")
         {
             transform.LookAt(GameObject.Find(rotateData.Target).transform);

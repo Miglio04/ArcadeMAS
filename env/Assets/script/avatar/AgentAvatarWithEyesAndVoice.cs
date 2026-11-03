@@ -30,9 +30,12 @@ public abstract class AgentAvatarWithEyesAndVoice : AgentAvatar
 
         messageHandlersWithMessage = new Dictionary<string, Action<WsMessage>>
         {
-            { MessageTypes.Walk, HandleAgentWalk }
+            { MessageTypes.Walk, message => movementModel.HandleWalkMessage(message) }
         };
+
+        movementModel.OnWalkStarted += OnWalkStarted;
     }
+    
     protected void initializeAvatarWithEyes()
     {
         // Retrieve avatar parts
@@ -48,6 +51,12 @@ public abstract class AgentAvatarWithEyesAndVoice : AgentAvatar
         baloonText.text = "start";
     }
 
+
+    protected void OnWalkStarted(string message)
+    {
+        UnityMainThreadDispatcher.Instance().Enqueue(() => SetBaloonText(message));
+    }
+    
     public void SetBaloonText(string message)
     {
         baloonText.text = message;
@@ -94,18 +103,6 @@ public abstract class AgentAvatarWithEyesAndVoice : AgentAvatar
         UnityMainThreadDispatcher.Instance().Enqueue(() =>
         {
             print("Connection established for " + objInUse.name);
-        });
-    }
-
-    private void HandleAgentWalk(WsMessage message)
-    {
-        print("Agent needs to reach destination.");
-        // Avatar receives the type of artifact to reach
-        UnityMainThreadDispatcher.Instance().Enqueue(() =>
-        {
-            WalkData data = message.Data.ToObject<WalkData>();
-            SetBaloonText("New destination: " + data.Target );
-            ReachDestination( data.Target );
         });
     }
 }

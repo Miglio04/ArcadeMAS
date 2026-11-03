@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using Newtonsoft.Json;
 using script.core.util;
 using UnityEngine;
@@ -13,18 +14,18 @@ using WebSocketSharp;
 
 public abstract class VesnaAvatarBase : AgentAvatarSocial
 {
-    protected TopologicalMovement topoMover;
-
     protected override void Awake()
     {
         base.Awake();
-        topoMover = movementModel as TopologicalMovement;
-        if (topoMover == null)
-            Debug.LogWarning($"[{name}] TopologicalMovement not found: " +
-                             "node-to-node navigation will not be available.");
+        if (movementModel == null)
+            Debug.LogWarning($"[{name}] MovementModel not found.");
         _ = startServer();
     }
 
+    protected override void EventSetup() { }
+
+    protected override void EventDestroy() { }
+    
     protected override void OnMessage(object sender, MessageEventArgs e)
     {
         try
@@ -32,36 +33,14 @@ public abstract class VesnaAvatarBase : AgentAvatarSocial
             var message = JsonConvert.DeserializeObject<WsMessage>(e.Data);
             if (message != null && message.Type == MessageTypes.Walk)
             {
-                var innerType = message.Data?["type"]?.ToString();
-                if (innerType == "goto_pos" && topoMover != null)
-                {
-                    var d = message.Data;
-                    float px = (float)d["x"];
-                    float py = (float)d["y"];
-                    float pz = (float)d["z"];
-                    string label = (string)d["target"];
-                    UnityMainThreadDispatcher.Instance().Enqueue(() => topoMover.GoToPosition(px, py, pz, label));
-                    return;
-                }
-                var walkData = message.Data.ToObject<WalkData>();
-                 Debug.Log($"[VesnaAvatarBase] Walking towards '{walkData?.Target}', " +
-                           $"topoMover null: {topoMover == null}, HasNode: {topoMover?.HasNode(walkData?.Target)}");
-                if (walkData != null
-                    && !string.IsNullOrEmpty(walkData.Target)
-                    && walkData.Target != "random"
-                    && topoMover != null
-                    && topoMover.HasNode(walkData.Target))
-                {
-                    string node = walkData.Target;
-                    UnityMainThreadDispatcher.Instance().Enqueue(() => topoMover.GoToNode(node));
-                    return;
-                }
+                movementModel.HandleWalkMessage(message);
             }
         }
         catch (Exception ex)
         {
            Debug.LogWarning($"[VesnaAvatarBase] Parsing exception: {ex.Message}" +
-                            $" | topoMover null: {topoMover == null}");
+                            $" | movementModel null: {movementModel == null}" + 
+                            $" | StackTrace: {ex.StackTrace}");
         }
 
         base.OnMessage(sender, e);

@@ -37,6 +37,7 @@ public abstract class AbstractMasElement extends Artifact{
     protected void initializeWebSocketConnection(int port, String name) {
         String host = "localhost";
         try {
+            System.out.println("Trying to connect " + name);
             client = new WsClient( new URI( "ws://" + host + ":" + port ) );
             client.setMsgHandler( this::onMessageReceived );
 
@@ -73,7 +74,9 @@ public abstract class AbstractMasElement extends Artifact{
         AgentId agentId = new AgentId(agentName, agentName, 0, "", null);
         if(param == null){
             signal(agentId, plan);
-        } else {
+        } else if (param instanceof Object[]) {
+            signal(agentId, plan, (Object[]) param);
+        }  else {
             signal(agentId, plan, param);
         }
     }

@@ -56,11 +56,12 @@
     .wait("+artifact_names(Artifacts)").
 
 @retrieve_nearest_artifacts_by_type[atomic]
-+!retrieve_nearest_artifacts_by_type(ArtifactType, Artifacts) <-
++!retrieve_nearest_artifacts_by_type(ArtifactType, Artifacts, Rooms) <-
+    .print("Retrieving artifacts: ", ArtifactType);
     lookupArtifact("envManager", LeadArtifactId);
     .my_name(Name);
     retrieveNearestArtifactByType(ArtifactType, Name)[artifact_id(LeadArtifactId)];
-    .wait("+artifact_names(Artifacts)").
+    .wait("+artifact_names(Artifacts, Rooms)").
 
 @retrieve_all_artifacts[atomic]
 +!retrieve_all_artifacts(ArtifactType, Artifacts) <-

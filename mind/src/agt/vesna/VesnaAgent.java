@@ -136,7 +136,6 @@ public class VesnaAgent extends Agent{
             String target = data.getString( "name" );
             Literal percept = parseLiteral( "reached(" + type + ", \"" + target + "\")" );
             sense( percept );
-            System.out.println("[VesnaAgent] reached(" + type + ", " + target + ") segnalato.");
         } catch ( Exception e ) {
             e.printStackTrace();
         }
@@ -155,8 +154,10 @@ public class VesnaAgent extends Agent{
 
     private void handle_arts(JSONObject data) {
         JSONArray art_names = data.getJSONArray("names");
+        JSONArray art_rooms = data.optJSONArray("RoomNames");
         try {
-            Literal percept = parseLiteral("art_names(" + art_names.toString() + ")");
+            String rooms = (art_rooms != null) ? art_rooms.toString() : "[]";
+            Literal percept = parseLiteral("art_names(" + art_names.toString() + ", " + rooms + ")");
             sense(percept);
         } catch (Exception e) {
             e.printStackTrace();

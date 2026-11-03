@@ -11,7 +11,7 @@ using Unity.VisualScripting;
 public class ShopperAvatarScript : AgentAvatarSocial
 {
     public ShopperBeliefs shopperBeliefs;
-    private AutonomousWalking autonomousWalking;
+    private WaypointMovement _waypointMovement;
     public GameObject[] waypoints;
 
     protected override void Awake()
@@ -19,9 +19,8 @@ public class ShopperAvatarScript : AgentAvatarSocial
         base.Awake();   
         agentType = AgentType == AgentTypeEnum.None ? AgentTypeEnum.Shopper : AgentType;
         JaCaMoAgentClassPath = "artifact.lib.maselements.AgentMasElement";
-        autonomousWalking = (AutonomousWalking) movementModel;
-        if (waypoints is { Length: > 0 })
-            autonomousWalking.Waypoints = waypoints;
+        if (movementModel is WaypointMovement waypointMovement && waypoints is { Length: > 0 }) 
+            waypointMovement.Waypoints = waypoints;
     }
 
     public override AgentBeliefs AgentBeliefs => shopperBeliefs;

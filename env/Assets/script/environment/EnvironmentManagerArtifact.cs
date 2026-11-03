@@ -6,10 +6,13 @@ using WebSocketSharp;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using UnityEditor.Experimental;
+using script.environment;
 
+[RequireComponent(typeof(NodesPositionFinder))]
 public class EnvironmentManagerArtifact : Artifact
 {
+    [Tooltip("Add the PositionFinder for places, choose NodesPositionFinder if you are using TopologicalMovement.")]
+    public PlacesPositionFinder placesPositionFinder;
     List<Artifact> artifacts = new List<Artifact>();
     string mindPath = Path.Combine("..", "mind");
     public string jcmFilePath = Path.Combine("..", "mind", "exploration.jcm");
@@ -101,7 +104,7 @@ public class EnvironmentManagerArtifact : Artifact
 
     private async void RetrieveNearestArtifactsByType(string resourceType, string agentName)
     {
-        TaskCompletionSource<string[]> tcs = new TaskCompletionSource<string[]>();
+        TaskCompletionSource<(string[], string[])> tcs = new TaskCompletionSource<(string[], string[])>();
         UnityMainThreadDispatcher.Instance()
         .Enqueue(() =>
         {
@@ -137,10 +140,11 @@ public class EnvironmentManagerArtifact : Artifact
 
             // Extract the sorted GameObjects into a list
             List<GameObject> sortedArtifacts = artifactsWithDistances.Select(pair => pair.Key).ToList();
-            tcs.SetResult(sortedArtifacts.Select(artifact => artifact.name).ToArray());
+            tcs.SetResult((sortedArtifacts.Select(artifact => artifact.name).ToArray(), 
+                sortedArtifacts.Select(artifact => artifact.GetComponent<Artifact>().roomNode.name).ToArray()));
         });
-        string[] artifactNames = await tcs.Task;
+        (string[] artifactNames, string[] roomNodes) = await tcs.Task;
         wsChannel.sendMessage(UnityJacamoIntegrationUtil.CreateAndConvertJacamoMessageIntoJsonString("artifactStrategy",
-            null, "artifact_names", agentName, artifactNames));
+            null, "artifact_names", agentName, artifactNames, roomNodes));
     }
 }

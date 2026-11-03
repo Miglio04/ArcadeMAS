@@ -1,5 +1,6 @@
 { include("libraryPlans.asl") }
-{ include("artifacts.asl") }
+
+name("player").
 
 /* --- Working Progress on user interaction --- */
 
@@ -18,8 +19,9 @@
     : tokens(T) & T > 0 & games(Games) & not games([])
     <- !get_random_game;
         ?chosenGame(Game);
+        ?chosenGameRoom(GameRoom);
         .print("Attempting to play ", Game, "...");
-        !reach_dest(Game);
+        !go_to(GameRoom, Game);
         .nth(0, Game, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
         .replace(Game, Upper, Lower, NormalizedName); // replace the first character.
@@ -45,6 +47,7 @@
         stopGame(Me)[artifact_id(ArtifactId)];
         stopFocus(ArtifactId);
         -chosenGame(Game);
+        -chosenGameRoom(GameRoom);
         -movement_in_progress(_);
         !play.
 
@@ -53,12 +56,14 @@
     <- .print("Attempting to play a game...");
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
-        !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Games);
+        !retrieve_nearest_artifacts_by_type("SinglePlayerGame", Games, GameRooms);
         +games(Games);
+        +gameRooms(GameRooms);
         !get_random_game;
         ?chosenGame(Game);
+        ?chosenGameRoom(GameRoom);
         stopFocus(ArtId);
-        !reach_dest(Game);
+        !go_to(GameRoom, Game);
         .nth(0, Game, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
         .replace(Game, Upper, Lower, NormalizedName); // replace the first character.
@@ -84,6 +89,7 @@
         stopGame(Me)[artifact_id(ArtifactId)];
         stopFocus(ArtifactId);
         -chosenGame(Game);
+        -chosenGameRoom(GameRoom);
         -movement_in_progress(_);
         !play.
 
@@ -93,15 +99,20 @@
 
 /* --- Buy Tokens Logic --- */
 
++artifact_names(Names, Rooms)
+   <- .print("Names: ", Names, " Rooms: ", Rooms).
+
 +!buy_tokens
     : budget(B) & token_price(TokenPrice) & B >= TokenPrice
     <- .print("Attempting to buy tokens...");
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
-        !retrieve_nearest_artifacts_by_type("TokenMachine", Artifacts);
+        !retrieve_nearest_artifacts_by_type("TokenMachine", Artifacts, ArtRooms);
         Artifacts = [Game | _];
+        ArtRooms = [GameRoom | _];
         stopFocus(ArtId);
-        !reach_dest(Game);
+        .print("Found TokenMachine");
+        !go_to(GameRoom, Game);
         .nth(0, Game, Upper); // Get the first character of the string
         .lower_case(Upper, Lower); // Make it lowercase
         .replace(Game, Upper, Lower, NormalizedName); 
@@ -144,10 +155,11 @@
     <- .print("Not enough budget to buy tokens. Please check your budget and try again.");
         lookupArtifact("envManager", ArtId);
         focus(ArtId);
-        !retrieve_nearest_artifacts_by_type("Door", Artifacts);
+        !retrieve_nearest_artifacts_by_type("Door", Artifacts, ArtRooms);
         Artifacts = [Door | _];
+        ArtRooms = [DoorRoom | _];
         stopFocus(ArtId);
-        !reach_dest(Door).
+        !go_to(DoorRoom, Door).
 
 /* --- Auxiliary plans --- */
 
@@ -166,10 +178,21 @@
     <- +access_granted_ready(ArtifactName).
 
 +!get_random_game
-    : games(Games) & not games([])
+    : games(Games) & not games([]) & gameRooms([])
     <- .shuffle(Games, ShuffledGames);
         .nth(0, ShuffledGames, Game);
         +chosenGame(Game).
+
++!get_random_game
+    : games(Games) & not games([]) & gameRooms(GameRooms) & not gameRooms([])
+    <- .length(Games, Len);
+       .findall(I, .range(I, 0, Len-1), Indices);
+       .shuffle(Indices, Shuffled);
+       .nth(0, Shuffled, I);
+       .nth(I, Games, Game);
+       .nth(I, GameRooms, GameRoom);
+       +chosenGame(Game);
+       +chosenGameRoom(GameRoom).
 
 { include("$jacamo/templates/common-cartago.asl") }
 { include("$jacamo/templates/common-moise.asl") }
