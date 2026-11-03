@@ -1,17 +1,28 @@
 mas exploration {
-    agent explorer : explorer.asl {
-        ag-class: vesna.VesnaAgent
-        beliefs: address(localhost)
-                 port(8080)
-        join: main
-    }
-    agent vesna_agent : navigator.asl {
-        ag-class: vesna.VesnaAgent
-        beliefs: address(localhost)
-                 port(8081)
-        join: main
-    }
+	
+    agent player1:topologicalPlayer.asl {
+		ag-class: vesna.VesnaAgent
+		beliefs: address( localhost )
+			port( 8083 )
+			budget(20), tokens(0), token_price(2), friends([])
+		goals:	play
+		join: main
+
+	}
+
+	agent player2:directPlayer.asl {
+		ag-class: vesna.VesnaAgent
+		beliefs: address( localhost )
+			port( 8084 )
+			budget(20), tokens(0), token_price(2), friends([])
+		goals:	play
+		join: main
+
+	}
+
     workspace main {
-        artifact envManager: artifact.EnvManagerArtifact("envManager")
+        artifact envManager: artifact.EnvManagerArtifact("envManager", 9500)
+        artifact tokenMachine: artifact.TokenMachineArtifact("TokenMachine", 9503)
+		artifact pacman: artifact.SinglePlayerGameArtifact("Pacman", 9501)
     }
 }
