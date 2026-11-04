@@ -172,7 +172,7 @@ public class ArtifactEditor : Editor
         }
 
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Interazione Dinamica JaCaMo", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("JaCaMo Dynamic Interaction", EditorStyles.boldLabel);
 
         var artifactTypeString = _artifactScript.GetArtifactTypeName();
         var javaClassName = artifactTypeString + "Artifact";
@@ -187,15 +187,15 @@ public class ArtifactEditor : Editor
             EditorGUILayout.Space();
 
             var primaryIndex = Mathf.Max(0, Array.IndexOf(availableActions, _artifactScript.primaryActionToTrigger));
-            primaryIndex = EditorGUILayout.Popup("Azione Primaria", primaryIndex, availableActions);
+            primaryIndex = EditorGUILayout.Popup("Primary Action", primaryIndex, availableActions);
             _artifactScript.primaryActionToTrigger = availableActions[primaryIndex];
 
             var secondaryIndex = Mathf.Max(0, Array.IndexOf(availableActions, _artifactScript.secondaryActionToTrigger));
-            secondaryIndex = EditorGUILayout.Popup("Azione Secondaria", secondaryIndex, availableActions);
+            secondaryIndex = EditorGUILayout.Popup("Secondary Action", secondaryIndex, availableActions);
             _artifactScript.secondaryActionToTrigger = availableActions[secondaryIndex];
 
             var tertiaryIndex = Mathf.Max(0, Array.IndexOf(availableActions, _artifactScript.tertiaryActionToTrigger));
-            tertiaryIndex = EditorGUILayout.Popup("Azione Terziaria", tertiaryIndex, availableActions);
+            tertiaryIndex = EditorGUILayout.Popup("Tertiary Action", tertiaryIndex, availableActions);
             _artifactScript.tertiaryActionToTrigger = availableActions[tertiaryIndex];
         }
         else
