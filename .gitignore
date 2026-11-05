@@ -6,6 +6,7 @@ env/obj/
 env/bin/
 env/*.csproj
 env/*.sln
+env/*.sln.*
 env/UserSettings/
 env/ProjectSettings/Packages-manifest.backup
 env/[Ll]ibrary/

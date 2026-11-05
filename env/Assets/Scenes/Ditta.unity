@@ -41871,6 +41871,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09f3294f51e9f944ab6d84de49051b6e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lookAngle: 0.8
   arrivalThreshold: 1.5
   objectArrivalThreshold: 0.6
 --- !u!114 &926263897
@@ -48134,6 +48135,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ab52c4862243d324292787833748da46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lookAngle: 0.8
 --- !u!64 &1101342477
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -91867,6 +91869,10 @@ PrefabInstance:
       propertyPath: m_AnchoredPosition.y
       value: -15.59
       objectReference: {fileID: 0}
+    - target: {fileID: 2750196718707806197, guid: a07076d45b5d7a1439cefdf6d9995d38, type: 3}
+      propertyPath: visionCone
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 4126079323758399985, guid: a07076d45b5d7a1439cefdf6d9995d38, type: 3}
       propertyPath: m_LocalPosition.x
       value: -10.82
@@ -92060,11 +92066,11 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1149878624455498663, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 0
+      value: 43.739998
       objectReference: {fileID: 0}
     - target: {fileID: 1149878624455498663, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_SizeDelta.y
-      value: 0
+      value: 31.18
       objectReference: {fileID: 0}
     - target: {fileID: 1660574815607837327, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_LocalPosition.x
@@ -92108,31 +92114,35 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3773323393643383147, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3773323393643383147, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_AnchorMin.y
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3773323393643383147, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 0
+      value: 23.739998
       objectReference: {fileID: 0}
     - target: {fileID: 3773323393643383147, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_SizeDelta.y
-      value: 0
+      value: 11.18
       objectReference: {fileID: 0}
     - target: {fileID: 3773323393643383147, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0
+      value: 21.869999
       objectReference: {fileID: 0}
     - target: {fileID: 3773323393643383147, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 0
+      value: -15.59
       objectReference: {fileID: 0}
     - target: {fileID: 4141621288161553693, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: m_Name
       value: finalavatarWithEyes Esploratore
+      objectReference: {fileID: 0}
+    - target: {fileID: 4141621288161553693, guid: c5185f380eca406418ea282dd1719e51, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4754636005580410494, guid: c5185f380eca406418ea282dd1719e51, type: 3}
       propertyPath: doorLayers.m_Bits
@@ -92185,10 +92195,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 885813778365031889, guid: c5185f380eca406418ea282dd1719e51, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: c5185f380eca406418ea282dd1719e51, type: 3}
 --- !u!1001 &8977989328242817695
 PrefabInstance:
