@@ -47,7 +47,6 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
         writeLog("Clearing token machine");
         String owner = String.valueOf(getObsProperty(OWNER_PROPERTY).getValue());
         writeLog("clearTokenMachine owner before clear=" + owner + ", waitList=" + waitList);
-        notifyUnityAction(CLEAR_TOKEN_MACHINE_ACTION, Map.of(OWNER_PROPERTY, owner));
         getObsProperty(TOKENS).updateValue(0);
         if (waitList.isEmpty()) {
             getObsProperty(OWNER_PROPERTY).updateValue("");
@@ -58,6 +57,7 @@ public class TokenMachineArtifact extends AbstractMasElementArtifact {
             signalAgent(nextAgent, ACCESS_GRANTED_ACTION, normalizedArtifactName());
             writeLog("Granted access to " + nextAgent + ", remaining queue=" + waitList);
         }
+        notifyUnityAction(CLEAR_TOKEN_MACHINE_ACTION, Map.of(OWNER_PROPERTY, getObsProperty(OWNER_PROPERTY).getValue()));
     }
 
     @INTERNAL_OPERATION
