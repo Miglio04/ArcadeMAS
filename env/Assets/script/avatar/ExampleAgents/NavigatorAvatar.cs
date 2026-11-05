@@ -1,12 +1,12 @@
 using UnityEngine;
 
 // ============================================================
-// NavigatorAvatar.cs  ->  : VesnaAvatarBase
+// NavigatorAvatar.cs  ->  : AgentAvatarSocial
 // ============================================================
 // Navigator agent: uses the envManager artifact to move around
 // ============================================================
 
-public class NavigatorAvatar : VesnaAvatarBase
+public class NavigatorAvatar : AgentAvatarSocial
 {
     protected override void Awake()
     {
@@ -14,5 +14,12 @@ public class NavigatorAvatar : VesnaAvatarBase
         JaCaMoAgentClassPath = "artifact.lib.maselements.AgentMasElement";
 
         base.Awake();
+        if (movementModel == null)
+            Debug.LogWarning($"[{name}] MovementModel not found.");
+        _ = startServer();
     }
+    
+    protected override void EventSetup() { }
+
+    protected override void EventDestroy() { }
 }

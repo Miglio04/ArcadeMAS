@@ -1,13 +1,13 @@
 using UnityEngine;
 
 // ============================================================
-// ExplorerAvatar.cs  ->  : VesnaAvatarBase
+// ExplorerAvatar.cs  ->  : AgentAvatarSocial
 // ============================================================
 // Explorer agent: by navigating the different rooms, discovers
 // the graph.
 // ============================================================
 
-public class ExplorerAvatar : VesnaAvatarBase
+public class ExplorerAvatar : AgentAvatarSocial
 {
     protected override void Awake()
     {
@@ -15,5 +15,12 @@ public class ExplorerAvatar : VesnaAvatarBase
         JaCaMoAgentClassPath = "artifact.lib.maselements.AgentMasElement";
 
         base.Awake();
+        if (movementModel == null)
+            Debug.LogWarning($"[{name}] MovementModel not found.");
+        _ = startServer();
     }
+    
+    protected override void EventSetup() { }
+
+    protected override void EventDestroy() { }
 }
