@@ -2,7 +2,6 @@
 {
     None,
     Explorer,
-    Navigator,
     Shopper,
     Player,
 }
